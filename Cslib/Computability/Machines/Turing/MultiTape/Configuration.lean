@@ -60,6 +60,7 @@ the sub-linear space modifications from chapter 2.5 with the following changes:
     output tape
 * `Action`: what a machine does in one step
 * `Action.apply`: the effect of one action on a configuration
+* `HeadSymbols`, `Cfg.headSymbols`: the symbols under the heads, which a transition reads
 * `Cfg.Halted`, `Cfg.init`: halting, and the configuration a machine starts in
 
 ## References
@@ -198,6 +199,19 @@ lemma inputSymbolInner {cfg : Cfg k Symbol State input} (p : ℕ)
 def Cfg.workTapeSymbols (cfg : Cfg k Symbol State input) (i : Fin k) : Option Symbol :=
   cfg.workTapes i (cfg.workTapePos i)
 
+/-- The symbols under the heads of a machine with `k` work tapes, which its transitions read. -/
+@[ext]
+structure HeadSymbols (k : ℕ) (Symbol : Type*) where
+  /-- the symbol under the input head -/
+  inputSymbol : Option Symbol
+  /-- the symbols under the work-tape heads -/
+  workTapeSymbols : Fin k → Option Symbol
+
+/-- The symbols under the heads of a configuration. -/
+@[simps]
+def Cfg.headSymbols (cfg : Cfg k Symbol State input) : HeadSymbols k Symbol :=
+  ⟨cfg.inputSymbol, cfg.workTapeSymbols⟩
+
 /-- A configuration is halted when it has no state to continue from. -/
 abbrev Cfg.Halted (cfg : Cfg k Symbol State input) : Prop := cfg.state = none
 
@@ -211,12 +225,6 @@ output, so prepending to it preserves steps: cf. `Turing.MultiTapeNTM.prependOut
 @[simps] def Cfg.withState (cfg : Cfg k Symbol State input)
     {State' : Type*} (q : Option State') : Cfg k Symbol State' input :=
   ⟨q, cfg.inputPos, cfg.workTapes, cfg.workTapePos, cfg.output⟩
-
-/-- Forget the control state of a configuration, keeping the input head, the work tapes, the
-work-tape heads and the output. A property of this part of a configuration makes sense for every
-machine, whatever its state type. -/
-@[simps] def Cfg.forgetState (cfg : Cfg k Symbol State input) : Cfg k Symbol Unit input :=
-  ⟨some (), cfg.inputPos, cfg.workTapes, cfg.workTapePos, cfg.output⟩
 
 /-- Remap the (optional) state of a configuration through `φ`, leaving the input head, the work
 tapes, the work-tape heads and the output alone. Control-flow combinators such as `seq` embed a

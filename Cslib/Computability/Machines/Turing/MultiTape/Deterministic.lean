@@ -31,6 +31,8 @@ We define a number of structures and concepts related to multi-tape Turing machi
     symbols to exactly one action
 * `MultiTapeTM`: the TM itself
 * `tr`, `ofTr`: the derived transition function and construction from a function
+* `adapt`: the machine run through an adapter
+* `combine`: two machines on the same tapes combined into one
 * `step`, `runFrom`: the successor configuration and iteration of this function
 * `MultiTapeNTM.RunPath.ofDeterministic`, `MultiTapeNTM.ComputationPath.ofDeterministic`:
     paths of a given length from an arbitrary or initial configuration
@@ -110,6 +112,80 @@ lemma tr_ofTr (q₀ : State)
     (ofTr q₀ tr).tr q input work = tr q input work :=
   tr_iff.mp rfl
 
+/-- The transitions of `tm` performed through `adapter`: it reads what `tm` reads through `adapter`
+and performs the adaptation of the action of `tm`. -/
+noncomputable def adaptedTr {k' : ℕ} {State' : Type*} (tm : MultiTapeTM k Symbol State)
+    (adapter : MultiTapeNTM.Adapter k k' Symbol State State') (q : State) (inp : Option Symbol)
+    (work : Fin k' → Option Symbol) : Action k' Symbol State' :=
+  adapter.action ⟨inp, work⟩ (tm.tr q (adapter.read ⟨inp, work⟩).inputSymbol
+    (adapter.read ⟨inp, work⟩).workTapeSymbols)
+
+/-- `tm` run through `adapter`, a `MultiTapeNTM.Adapter`: the adapter computes what `tm` reads
+from the symbols under the heads of the new machine, and gives the action of the new machine
+performing each action of `tm`. In state `q`, `tm.adapt adapter` performs the adaptation of the
+action of `tm` in `q` on what the adapter reads. -/
+noncomputable def adapt {k' : ℕ} (tm : MultiTapeTM k Symbol State)
+    (adapter : MultiTapeNTM.Adapter k k' Symbol State State) : MultiTapeTM k' Symbol State :=
+  ofTr tm.q₀ (tm.adaptedTr adapter)
+
+/-- `tm.adapt adapter` follows `tm`. -/
+lemma follows_adapt {k' : ℕ} {adapter : MultiTapeNTM.Adapter k k' Symbol State State} :
+    (tm.adapt adapter).Follows tm id adapter :=
+  fun _ _ _ h => tr_iff.mp h ▸ rfl
+
+/-- `tm₀` and `tm₁` combined into one machine on their shared tapes, which starts in `q₀`: in a
+state `inl q` it performs the transition of `tm₀` in `q`, and in `inr q` that of `tm₁`. The maps
+`next₀` and `next₁` say where the steps of each machine lead: within the same machine, to the other
+machine, or to halting. -/
+noncomputable def combine {State₀ State₁ : Type*} (tm₀ : MultiTapeTM k Symbol State₀)
+    (tm₁ : MultiTapeTM k Symbol State₁) (next₀ : Option State₀ → Option (State₀ ⊕ State₁))
+    (next₁ : Option State₁ → Option (State₀ ⊕ State₁)) (q₀ : State₀ ⊕ State₁) :
+    MultiTapeTM k Symbol (State₀ ⊕ State₁) :=
+  ofTr q₀ fun q => q.elim (tm₀.adaptedTr (.mapState next₀)) (tm₁.adaptedTr (.mapState next₁))
+
+/-- Where the steps of a first machine lead when it runs in its own states: halting hands over to
+the second machine in its state `q₁`. -/
+def handOver {State₀ State₁ : Type*} (q₁ : State₁) (state : Option State₀) :
+    Option (State₀ ⊕ State₁) :=
+  some (state.elim (.inr q₁) .inl)
+
+@[simp] lemma handOver_some {State₀ State₁ : Type*} (q₁ : State₁) (q : State₀) :
+    handOver q₁ (some q) = some (.inl q) := rfl
+
+@[simp] lemma handOver_none {State₀ State₁ : Type*} (q₁ : State₁) :
+    handOver (State₀ := State₀) q₁ none = some (.inr q₁) := rfl
+
+section combine
+
+variable {State₀ State₁ : Type*} {tm₀ : MultiTapeTM k Symbol State₀}
+  {tm₁ : MultiTapeTM k Symbol State₁} {next₀ : Option State₀ → Option (State₀ ⊕ State₁)}
+  {next₁ : Option State₁ → Option (State₀ ⊕ State₁)} {q₀ : State₀ ⊕ State₁}
+
+/-- In its states `inl q`, the combined machine follows `tm₀`, its steps leading along `next₀`. -/
+lemma follows_combine_left : (combine tm₀ tm₁ next₀ next₁ q₀).Follows tm₀ .inl (.mapState next₀) :=
+  fun _ _ _ h => tr_iff.mp h ▸ rfl
+
+/-- In its states `inr q`, the combined machine follows `tm₁`, its steps leading along `next₁`. -/
+lemma follows_combine_right : (combine tm₀ tm₁ next₀ next₁ q₀).Follows tm₁ .inr (.mapState next₁) :=
+  fun _ _ _ h => tr_iff.mp h ▸ rfl
+
+/-- If `next₀` keeps the live states of `tm₀` in `tm₀`, the combined machine mirrors the running
+steps of `tm₀`, its states relabeled along `next₀`. -/
+@[simps! apply]
+noncomputable def combineLeftHom {input : List Symbol} (h : ∀ q, next₀ (some q) = some (.inl q)) :
+    (tm₀.runningStepRel input).Hom ((combine tm₀ tm₁ next₀ next₁ q₀).stepRel input) :=
+  follows_combine_left.runningStepHom (Cfg.mapState next₀) (fun _ _ hq => by simp [hq, h])
+    (fun _ => rfl) fun _ _ => rfl
+
+/-- If the steps of `tm₁` stay in `tm₁`, the combined machine mirrors them. -/
+@[simps! apply]
+noncomputable def combineRightHom {input : List Symbol} :
+    (tm₁.stepRel input).Hom ((combine tm₀ tm₁ next₀ (Option.map .inr) q₀).stepRel input) :=
+  follows_combine_right.stepHom (Cfg.mapState (Option.map .inr)) (fun _ => rfl) (fun _ => rfl)
+    fun _ _ => rfl
+
+end combine
+
 /-!
 ## Stepping a Turing Machine
 
@@ -168,27 +244,6 @@ public lemma step_workTapePos_of_state {cfg : Cfg k Symbol State input} {q : Sta
 lemma step_of_halt {cfg : Cfg k Symbol State input} (h : cfg.state = none) :
     tm.step cfg = cfg :=
   step_iff.mp ((MultiTapeNTM.step_of_halt h).mpr rfl)
-
-/-- A configuration map semiconjugating the step functions is a homomorphism of the step relations,
-so it maps run paths with `RelSeries.map`. -/
-def stepHom {k' : ℕ} {State' : Type*} {input' : List Symbol}
-    {tm' : MultiTapeTM k' Symbol State'}
-    (f : Cfg k Symbol State input → Cfg k' Symbol State' input')
-    (h : Function.Semiconj f tm.step tm'.step) :
-    (tm.stepRel input).Hom (tm'.stepRel input') where
-  toFun := f
-  map_rel' hc := step_iff.mpr ((h _).symm.trans (congrArg f (step_iff.mp hc)))
-
-/-- A configuration map commuting with the step functions on running configurations is a
-homomorphism from the running steps of `tm` to the steps of `tm'`. -/
-@[simps! apply]
-def runningStepHom {k' : ℕ} {State' : Type*} {input' : List Symbol}
-    {tm' : MultiTapeTM k' Symbol State'}
-    (f : Cfg k Symbol State input → Cfg k' Symbol State' input')
-    (h : ∀ c, ¬c.Halted → tm'.step (f c) = f (tm.step c)) :
-    (tm.runningStepRel input).Hom (tm'.stepRel input') where
-  toFun := f
-  map_rel' {c _} hc := step_iff.mpr ((h c hc.1).trans (congrArg f (step_iff.mp hc.2)))
 
 end MultiTapeTM
 

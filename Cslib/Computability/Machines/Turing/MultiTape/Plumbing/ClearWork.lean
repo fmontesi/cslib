@@ -46,7 +46,6 @@ public noncomputable def clearWork (Symbol : Type*) :
     MultiTapeTM 1 Symbol (Unit ⊕ RewindWorkState) :=
   (forwardWork Symbol).seq (rewindWork Symbol (some none))
 
-open Sequential in
 /-- **The machine that clears its work tape** replaces the word on it by the empty word, in at most
 `3 * (w.length + 1)` steps and `w.length + 2` cells. -/
 public theorem transformsTapes_clearWork (w : List Symbol) :
@@ -64,22 +63,20 @@ public theorem transformsTapes_clearWork (w : List Symbol) :
       Cfg 1 Symbol RewindWorkState input) (w.length + 2)
   have h₀ : p₀.last = _ := runFrom_forwardWork (input := input) 1 w out (zero_add _)
   have h₁ : p₁.last = _ := runFrom_rewindWork_erase (input := input) 1 (tapeOfList w) out rfl
-  obtain ⟨p, hh, hl, ht, hmem⟩ := exists_runPath_seq (p₀ := p₀) (p₁ := p₁) (by rw [h₀])
-    (by rw [h₀]; rfl) (by rw [h₁])
+  obtain ⟨p, hh, hl, ht, hvisited⟩ := exists_runPath_seq (p₀ := p₀) (p₁ := p₁) (by rw [h₀])
+    (by rw [h₀]; rfl)
   refine ⟨fun _ => [], [], ⟨rfl, rfl⟩, p, hh,
-    by rw [hl, h₁]; simp [rightCfg, Cfg.mapState, wordsCfg],
+    by rw [hl, h₁]; simp [Cfg.mapState, wordsCfg],
     (show p.length ≤ w.length + 1 + (w.length + 2) from ht).trans (by lia), ?_⟩
-  -- every head position of the two passes is in `[-1, w.length]`
+  -- both passes keep the head within `[-1, w.length]`
   rw [MultiTapeNTM.RunPath.space, Fin.sum_univ_one]
-  refine (p.spaceUsedByTape_le_card (S := .Icc (-1) (w.length : ℤ)) fun c hc => ?_).trans
-    (by simp; lia)
-  rcases hmem c hc with ⟨_, ⟨m, rfl⟩, he⟩ | ⟨_, ⟨m, rfl⟩, he⟩ <;>
-    rw [show c.workTapePos 0 = _ from congrArg (·.workTapePos 0) he]
-  · exact Finset.mem_Icc.2 (Set.Icc_subset_Icc_left (by lia)
-      (workTapePos_runFrom_forwardWork (input := input) 1 w out (Nat.zero_le w.length) m))
-  · exact Finset.mem_Icc.2
-      (workTapePos_runFrom_rewindWork (some none) (input := input) 1 (tapeOfList w) out rfl
-        le_rfl m)
+  refine (Finset.card_le_card (t := .Icc (-1 : ℤ) w.length)
+    ((hvisited 0).trans (Finset.union_subset ?_ ?_))).trans (by simp; lia) <;>
+    refine Finset.image_subset_iff.mpr fun m _ => Finset.mem_Icc.2 ?_
+  · exact Set.Icc_subset_Icc_left (by lia)
+      (workTapePos_runFrom_forwardWork (input := input) 1 w out (Nat.zero_le w.length) m)
+  · exact workTapePos_runFrom_rewindWork (some none) (input := input) 1 (tapeOfList w) out rfl
+      le_rfl m
 
 /-! ### Clearing one of several work tapes -/
 

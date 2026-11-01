@@ -18,8 +18,8 @@ frontier.
 
 Since the output is append-only, the frontier position is a *function of the configuration* —
 the length of the output so far — so the redirected machine mirrors the original through the
-configuration map `outCfg`. The main lemmas show that one step and an entire run path of the
-redirected machine mirror the corresponding step and run path of `tm`.
+configuration map `outCfg`, a homomorphism of step relations (`outCfgHom`), so each run path of `tm`
+maps to a run path of the redirected machine.
 -/
 
 namespace Turing.MultiTapeTM
@@ -30,16 +30,16 @@ variable {k : ℕ} {Symbol State : Type*} {input : List Symbol}
 at the write frontier. -/
 @[expose] public noncomputable def outputToTape (tm : MultiTapeTM k Symbol State) :
     MultiTapeTM (k + 1) Symbol State :=
-  ofTr tm.q₀ fun q inp work =>
-    let a := tm.tr q inp fun j => work j.castSucc
-    { inputTape := a.inputTape
-      workTapes := Fin.lastCases
-        (match a.output with
-          | none => (none, 0)
-          | some s => (some (some s), 1))
-        (fun j => a.workTapes j)
-      output := none
-      state := a.state }
+  tm.adapt
+    { read := fun heads => ⟨heads.inputSymbol, heads.workTapeSymbols ∘ Fin.castSucc⟩
+      action := fun _ a =>
+        { a with
+          workTapes := Fin.lastCases
+            (match a.output with
+              | none => (none, 0)
+              | some s => (some (some s), 1))
+            a.workTapes
+          output := none } }
 
 /-- A configuration of `tm`, as the redirected machine sees it: the output so far sits on the
 last work tape with the head at its end, and the real output is empty. -/
@@ -49,10 +49,6 @@ last work tape with the head at its end, and the real output is empty. -/
     Fin.lastCases (tapeOfList c.output) (fun j => c.workTapes j),
     Fin.lastCases (c.output.length : ℤ) (fun j => c.workTapePos j),
     []⟩
-
-@[simp]
-public lemma outCfg_inputSymbol (c : Cfg k Symbol State input) :
-    (outCfg c).inputSymbol = c.inputSymbol := rfl
 
 @[simp]
 public lemma outCfg_workTapes_last (c : Cfg k Symbol State input) :
@@ -79,27 +75,17 @@ public lemma outCfg_workTapeSymbols_castSucc (c : Cfg k Symbol State input) (j :
     (outCfg c).workTapeSymbols j.castSucc = c.workTapeSymbols j := by
   simp [Cfg.workTapeSymbols]
 
-/-- The redirection is a step-semiconjugation. -/
-public lemma step_outCfg (tm : MultiTapeTM k Symbol State) :
-    Function.Semiconj (outCfg (input := input)) tm.step tm.outputToTape.step := by
-  intro c
-  symm
-  cases hq : c.state with
-  | none => simp [outCfg, hq]
-  | some q =>
-    rw [step_of_state (cfg := outCfg c) hq, step_of_state hq]
-    simp only [outputToTape, tr_ofTr, outCfg_inputSymbol, outCfg_workTapeSymbols_castSucc]
-    refine Cfg.ext rfl rfl ?_ ?_ rfl <;> funext l <;> induction l using Fin.lastCases with
-    | cast j => simp
-    | last =>
-      cases h : (tm.tr q c.inputSymbol c.workTapeSymbols).output <;>
-        simp [h, tapeOfList_append_single, SignType.cast]
-
 /-- The redirection preserves steps, so it maps run paths of `tm` to run paths of the redirected
 machine. -/
 @[expose, simps! apply] public noncomputable def outCfgHom (tm : MultiTapeTM k Symbol State) :
     (tm.stepRel input).Hom (tm.outputToTape.stepRel input) :=
-  stepHom outCfg (step_outCfg tm)
+  follows_adapt.stepHom outCfg (fun _ => Option.map_id_apply)
+    (fun c => HeadSymbols.ext rfl (funext (outCfg_workTapeSymbols_castSucc c))) fun c a => by
+      refine Cfg.ext rfl rfl (funext fun l => ?_) (funext fun l => ?_) rfl <;>
+        induction l using Fin.lastCases with
+        | last =>
+          cases h : a.output <;> simp [h, Action.apply, tapeOfList_append_single, SignType.cast]
+        | cast j => simp [Action.apply]
 
 /-- The initial configuration of the redirected machine is the original's through `outCfg`. -/
 public lemma initCfg_outputToTape (tm : MultiTapeTM k Symbol State) (input : List Symbol) :

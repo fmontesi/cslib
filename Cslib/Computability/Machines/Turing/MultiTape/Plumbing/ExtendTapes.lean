@@ -19,8 +19,8 @@ tape `j`. The remaining tapes are left unchanged.
 The configuration map `embed e cfg extraTapes extraPos` places `cfg` on the selected tapes and
 initialises the remaining tapes from `extraTapes` and `extraPos`.
 
-The main lemmas show that one step and an entire run path of the larger machine mirror the
-corresponding step and run path of `tm`.
+The configuration map is a homomorphism of step relations (`embedHom`), so each run path of `tm`
+maps to a run path of the larger machine.
 
 ## Main definitions
 
@@ -34,7 +34,6 @@ corresponding step and run path of `tm`.
 
 ## Main results
 
-* `Turing.MultiTapeTM.step_embed`: the one-step mirroring lemma.
 * `Turing.MultiTapeTM.space_map_embedHom_le`: the space bound for a mapped path.
 * `Turing.MultiTapeTM.oneTapeCfg`: the one-tape view of a configuration.
 * `Turing.MultiTapeTM.runFrom_tapeEmb`: the run of a one-tape machine placed on work tape `i`.
@@ -64,14 +63,12 @@ public lemma partialInv_isPartialInv (e : Fin k ↪ Fin k') :
 moves. -/
 @[expose] public noncomputable def extendTapes (tm : MultiTapeTM k Symbol State)
     (e : Fin k ↪ Fin k') : MultiTapeTM k' Symbol State :=
-  ofTr tm.q₀ fun q inp work =>
-    let a := tm.tr q inp fun j => work (e j)
-    { inputTape := a.inputTape
-      workTapes := fun l => match partialInv e l with
-        | some j => a.workTapes j
-        | none => (none, 0)
-      output := a.output
-      state := a.state }
+  tm.adapt
+    { read := fun heads => ⟨heads.inputSymbol, heads.workTapeSymbols ∘ e⟩
+      action := fun _ a =>
+        { a with workTapes := fun l => match partialInv e l with
+            | some j => a.workTapes j
+            | none => (none, 0) } }
 
 @[simp]
 public lemma extendTapes_q₀ (tm : MultiTapeTM k Symbol State) (e : Fin k ↪ Fin k') :
@@ -107,11 +104,6 @@ public lemma partialInv_eq_some (e : Fin k ↪ Fin k') {l : Fin k'} {j : Fin k}
   (partialInv_isPartialInv e j l).mp h
 
 @[simp]
-public lemma embed_inputSymbol (e : Fin k ↪ Fin k') (cfg : Cfg k Symbol State input)
-    (extraTapes : Fin k' → ℤ → Option Symbol) (extraPos : Fin k' → ℤ) :
-    (embed e cfg extraTapes extraPos).inputSymbol = cfg.inputSymbol := rfl
-
-@[simp]
 public lemma embed_workTapes_embed (e : Fin k ↪ Fin k') (cfg : Cfg k Symbol State input)
     (extraTapes : Fin k' → ℤ → Option Symbol) (extraPos : Fin k' → ℤ) (j : Fin k) :
     (embed e cfg extraTapes extraPos).workTapes (e j) = cfg.workTapes j := by
@@ -129,30 +121,18 @@ public lemma embed_workTapeSymbols_embed (e : Fin k ↪ Fin k') (cfg : Cfg k Sym
     (embed e cfg extraTapes extraPos).workTapeSymbols (e j) = cfg.workTapeSymbols j := by
   simp [Cfg.workTapeSymbols]
 
-/-- Reindexing is a step-semiconjugation: the reindexed machine acts on the embedded tapes exactly
-as `tm` does, and never touches the extra tapes. -/
-public lemma step_embed (tm : MultiTapeTM k Symbol State) (e : Fin k ↪ Fin k')
-    (extraTapes : Fin k' → ℤ → Option Symbol) (extraPos : Fin k' → ℤ) :
-    Function.Semiconj (embed (input := input) e · extraTapes extraPos) tm.step
-      (tm.extendTapes e).step := by
-  intro cfg
-  symm
-  cases hq : cfg.state with
-  | none => simp [embed, hq]
-  | some q =>
-    rw [step_of_state (cfg := embed e cfg extraTapes extraPos) hq, step_of_state hq]
-    simp only [extendTapes, tr_ofTr, embed_inputSymbol, embed_workTapeSymbols_embed]
-    refine Cfg.ext rfl rfl ?_ ?_ rfl <;> funext l <;> simp only [Action.apply, embed] <;>
-      cases partialInv e l <;> simp
-
 /-- `embed` as a homomorphism of step relations: each step `c → c'` of `tm` becomes the step
 `embed c → embed c'` of the reindexed machine, so a run path of `tm` maps to a run path of the
-reindexed machine, with the extra tapes held fixed. `stepHom` builds it from `step_embed`, which
-says that `embed` commutes with the step functions. -/
+reindexed machine, with the extra tapes held fixed. `Follows.stepHom` builds it, since `embed`
+agrees with the adapter defining `extendTapes`. -/
 @[expose, simps! apply] public noncomputable def embedHom (tm : MultiTapeTM k Symbol State)
     (e : Fin k ↪ Fin k') (extraTapes : Fin k' → ℤ → Option Symbol) (extraPos : Fin k' → ℤ) :
     (tm.stepRel input).Hom ((tm.extendTapes e).stepRel input) :=
-  stepHom (embed e · extraTapes extraPos) (step_embed tm e extraTapes extraPos)
+  follows_adapt.stepHom (embed e · extraTapes extraPos) (fun _ => Option.map_id_apply)
+    (fun c => HeadSymbols.ext rfl (funext (embed_workTapeSymbols_embed e c extraTapes extraPos)))
+    fun c a => by
+      refine Cfg.ext rfl rfl ?_ ?_ rfl <;> funext l <;> simp only [Action.apply, embed] <;>
+        cases partialInv e l <;> simp
 
 section Space
 
@@ -243,12 +223,10 @@ public theorem TransformsTapes.tapeEmb {tm : MultiTapeTM 1 Symbol State}
         (fun _ => 0) = wordsCfg input q (Function.update ws i (v 0)) o := by
     rw [embed_tapeEmb]
     refine Cfg.ext rfl rfl ?_ ?_ rfl <;> funext l <;> by_cases hl : l = i <;> simp [hl, wordsCfg]
-  refine ⟨Function.update ws i (v 0), emitted, ⟨v, hQ, rfl⟩,
-    p.map (embedHom tm (MultiTapeTM.tapeEmb i) (fun l => tapeOfList (ws l)) (fun _ => 0)),
-    ?_, ?_, htime, (space_map_embedHom_le ..).trans (Nat.add_le_add_right hspace _)⟩
-  · simp only [RelSeries.head_map, hhead, embedHom_apply, hplace, Function.update_eq_self]
-    rfl
-  · simp only [RelSeries.last_map, hlast, embedHom_apply, hplace]
+  exact ⟨Function.update ws i (v 0), emitted, ⟨v, hQ, rfl⟩,
+    p.map (embedHom tm (MultiTapeTM.tapeEmb i) (fun l => tapeOfList (ws l)) fun _ => 0),
+    by simp [hhead, hplace], by simp [hlast, hplace], htime,
+    (space_map_embedHom_le ..).trans (Nat.add_le_add_right hspace _)⟩
 
 end OneTape
 
