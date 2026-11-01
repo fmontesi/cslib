@@ -42,6 +42,18 @@ theorem Satisfies.dynDiamond_iff_exists {m : Model World τ Atom}
 theorem Satisfies.dynBox_iff_forall {m : Model World τ Atom} {φ : Proposition τ Atom} :
     ⇓Modal[m,w ⊨ d[a]φ] ↔ ∀ w', m.toFrame.diagonal a w w' → ⇓Modal[m,w' ⊨ φ] := by grind
 
+/-- If two operators `op₁` and `op₂` have inverse diagonal relations, then `φ → d[op₁](d⟨op₂⟩φ)`. -/
+theorem Satisfies.dynBox_dynDiamond_diagonalInverse₁ {m : Model World τ Atom}
+    {op₁ op₂ : τ.A} [m.toFrame.DiagonalInverse op₁ op₂] {φ : Proposition τ Atom} :
+    ⇓Modal[m,w ⊨ φ → d[op₁](d⟨op₂⟩φ)] := by
+  grind [modal, Frame.DiagonalInverse.diagonalInverse]
+
+/-- If two operators `op₁` and `op₂` have inverse diagonal relations, then `φ → d[op₂](d⟨op₁⟩φ)`. -/
+theorem Satisfies.dynBox_dynDiamond_diagonalInverse₂ {m : Model World τ Atom}
+    {op₁ op₂ : τ.A} [m.toFrame.DiagonalInverse op₁ op₂] {φ : Proposition τ Atom} :
+    ⇓Modal[m,w ⊨ φ → d[op₂](d⟨op₁⟩φ)] :=
+  dynBox_dynDiamond_diagonalInverse₁
+
 omit [τ.Unary] in
 /-- The dual axiom (reformulated for unary modal logic). -/
 theorem Satisfies.unary_dual (f : Frame World τ) {a : τ.A} {φ : Proposition τ Atom} :
