@@ -498,9 +498,8 @@ noncomputable def falseNegativeError (P : Measure α) (h c : Set α) : ℝ≥0�
 errors, since `h ∆ c = (h \ c) ∪ (c \ h)` is a disjoint union. -/
 theorem hypothesisError_eq_add {P : Measure α} {h c : Set α}
     (hh : MeasurableSet h) (hc : MeasurableSet c) :
-    hypothesisError P h c = falsePositiveError P h c + falseNegativeError P h c := by
-  simp only [hypothesisError, falsePositiveError, falseNegativeError, symmDiff_def, sup_eq_union]
-  exact measure_union disjoint_sdiff_sdiff (hc.diff hh)
+    hypothesisError P h c = falsePositiveError P h c + falseNegativeError P h c :=
+  measure_union disjoint_sdiff_sdiff (hc.diff hh)
 
 open scoped Classical in
 /-- Under a realizable distribution `P.map (x ↦ (x, c(x)))`, the general 0-1 `error`

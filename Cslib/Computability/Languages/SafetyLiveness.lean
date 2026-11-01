@@ -69,7 +69,6 @@ theorem exists_safetyLivenessDecomposition (p : ωLanguage α) :
   split_ands
   · exact isSafety_closure p
   · exact isLiveness_sup_compl_closure p
-  · simp [ωLanguage.ext_iff, sup_def, closure, compl_def, inf_def,
-      inter_union_distrib_left, subset_closure]
+  · simp [sup_def, closure, compl_def, inf_def, inter_union_distrib_left, subset_closure]
 
 end Cslib.ωLanguage
