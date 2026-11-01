@@ -32,11 +32,13 @@ open Cslib.Language FreeMonoid
 /-- Converting a (two-sided) congruence `c` on finite words to a congruence relation
 on the (multiplicative) free monoid. -/
 def Congruence.toCon [c : Congruence α] : Con (FreeMonoid α) where
-  r := c.r
-  iseqv := c.iseqv
+  r x y := c.r x.toList y.toList
+  iseqv.refl _ := c.iseqv.refl _
+  iseqv.symm := c.iseqv.symm
+  iseqv.trans := c.iseqv.trans
   mul' {w x y z} h_wx h_yz := by
-    have h_wyxy : c.eq (w * y) (x * y) := c.right_cov.elim y h_wx
-    have h_xyxz : c.eq (x * y) (x * z) := c.left_cov.elim x h_yz
+    have h_wyxy : c.r (w * y).toList (x * y).toList := c.right_cov.elim y.toList h_wx
+    have h_xyxz : c.r (x * y).toList (x * z).toList := c.left_cov.elim x.toList h_yz
     exact c.iseqv.trans h_wyxy h_xyxz
 
 /-- The syntactic monoid of a language `l` is the quotient of the free monoid
@@ -47,10 +49,17 @@ abbrev SyntacticMonoid (l : Language α) := l.MyhillCongruence.toCon.Quotient
 by the Myhill congruence of `l`. -/
 abbrev homSyntacticMonoid (l : Language α) := l.MyhillCongruence.toCon.mk'
 
+/-- The syntactic monoid of a language `l` and its Myhill quotient are the quotients of
+`FreeMonoid α` and of `List α` by the same relation, hence in bijection. -/
+def syntacticMonoidEquivMyhillQuotient (l : Language α) :
+    l.SyntacticMonoid ≃ l.MyhillQuotient :=
+  Quotient.congr FreeMonoid.toListEquiv fun _ _ ↦ Iff.rfl
+
 /-- A language `l` is regular if and only if its syntactic monoid is finite. -/
 theorem IsRegular.iff_finite_syntacticMonoid (l : Language α) :
     l.IsRegular ↔ Finite (l.SyntacticMonoid) :=
-  IsRegular.iff_finite_myhillQuotient l
+  (IsRegular.iff_finite_myhillQuotient l).trans
+    (l.syntacticMonoidEquivMyhillQuotient.finite_iff).symm
 
 /-- The congruence induced by `homSyntacticMonoid` is exactly the Myhill congruence. -/
 theorem homSyntacticMonoid_iff_myhillCongruence {l : Language α} {x y : List α} :

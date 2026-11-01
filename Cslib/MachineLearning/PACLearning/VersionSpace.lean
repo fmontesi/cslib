@@ -165,7 +165,7 @@ theorem empiricalError_eq_div [DecidableEq β]
     empiricalError h S = (empiricalMiscount h S : ℝ≥0∞) / m := by
   have hm_ne : m ≠ 0 := hm.ne'
   unfold empiricalError empiricalMeasure error empiricalMiscount
-  rw [dite_eq_right hm_ne, Measure.smul_apply, Measure.finsetSum_apply]
+  rw [dite_eq_right hm_ne, smul_apply, sum_apply]
   simp only [Measure.dirac_apply, Set.indicator, Set.mem_ofPred_eq, Pi.one_apply, smul_eq_mul]
   rw [Finset.sum_boole, ← ENNReal.div_eq_inv_mul]
 
