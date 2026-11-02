@@ -11,15 +11,3 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: ci
-
-  # Python packages installed by workflows (see requirements.txt in this directory).
-  # Major bumps are left for a human to review.
-  - package-ecosystem: pip
-    directory: /.github
-    schedule:
-      interval: weekly
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-    commit-message:
-      prefix: ci

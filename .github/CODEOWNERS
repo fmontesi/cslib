@@ -1,8 +1,7 @@
 # For an overview of the governance model of cslib, please refer to /GOVERNANCE.md and /DECISION_MAKING.md
 
 * @fmontesi @chenson2018 @arademaker @SamuelSchlesinger @crei @sorrachai
-# The nightly bump pipeline lives here; @kim-em runs it. Repeats the catch-all
-# owners because the last matching rule is the only one that applies.
+# Repeat the catch-all owners because only the last matching rule applies.
 /.github/workflows/ @fmontesi @chenson2018 @kim-em @arademaker @SamuelSchlesinger @crei @sorrachai
 /.github/CODEOWNERS @fmontesi
 /DECISION_MAKING.md @fmontesi
