@@ -68,7 +68,7 @@ lemma invert_step_app_fvar (step : app M (fvar x) ⭢βᶠ N) :
   cases step
   case base h => cases h with | beta => exact .inr ⟨_, rfl, rfl⟩
   case appR step_M _ => exact .inl ⟨_, rfl, step_M⟩
-  all_goals grind only [cases Xi]
+  grind only [cases Xi]
 
 variable [HasFresh Var] [DecidableEq Var]
 
