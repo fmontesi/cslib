@@ -5,42 +5,76 @@ import Mathlib.Computability.Language
   With initial help from ChatGPT and later DeepSeek-V4.1-Flash-1017.
 -/
 
+namespace List
+
+/-- `PermUpTo r u v` means that `u` can be obtained from `v` by swapping adjacent elements
+related by `r`, in either direction. -/
+inductive PermUpTo {α : Type*} (r : α → α → Prop) : List α → List α → Prop where
+  | nil : PermUpTo r [] []
+  | cons (a : α) {u v : List α} : PermUpTo r u v → PermUpTo r (a :: u) (a :: v)
+  | swap (a b : α) (w : List α) (h : r a b ∨ r b a) :
+      PermUpTo r (a :: b :: w) (b :: a :: w)
+  | trans {u v w : List α} : PermUpTo r u v → PermUpTo r v w → PermUpTo r u w
+
+namespace PermUpTo
+
+variable {α : Type*} {r : α → α → Prop}
+
+/-- Every list is a permitted permutation of itself. -/
+theorem refl (w : List α) : PermUpTo r w w := by
+  induction w with
+  | nil => exact .nil
+  | cons a w ih => exact .cons a ih
+
+/-- Permitted permutations are symmetric, including for asymmetric relations. -/
+theorem symm {u v : List α} (h : PermUpTo r u v) : PermUpTo r v u := by
+  induction h with
+  | nil => exact .nil
+  | cons a _ ih => exact .cons a ih
+  | swap a b w h => exact .swap b a w h.symm
+  | trans _ _ ih₁ ih₂ => exact .trans ih₂ ih₁
+
+/-- Prepending the same list preserves permitted permutations. -/
+theorem append_left (u v w : List α) (h : PermUpTo r v w) :
+    PermUpTo r (u ++ v) (u ++ w) := by
+  induction u with
+  | nil => exact h
+  | cons a u ih => exact .cons a ih
+
+/-- Appending the same list preserves permitted permutations. -/
+theorem append_right (u v w : List α) (h : PermUpTo r v w) :
+    PermUpTo r (v ++ u) (w ++ u) := by
+  induction h with
+  | nil => exact refl u
+  | cons a _ ih => exact .cons a ih
+  | swap a b w h => exact .swap a b (w ++ u) h
+  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂
+
+end PermUpTo
+
+end List
+
 namespace Cslib.Concurrency
 
-/-- Independence relation on an alphabet α.
+/-- An independence relation is symmetric and irreflexive. -/
+class abbrev Independence {α : Type*} (I : α → α → Prop) := Std.Symm I, Std.Irrefl I
 
-`independent a b` means that the actions `a` and `b` are independent. -/
-structure Independence (α : Type*) where
-  independent : α → α → Prop
-  symm : ∀ {a b : α}, independent a b → independent b a
-  irrefl : ∀ a : α, ¬ independent a a
-
-/-- Definition for trace equivalence. `TraceEq I u v` means that the words `u` and `v` are equivalent under the independence relation `I`.
-In other words: `u` can be obtained from `v` by swapping adjacent independent characters, and vice-versa. -/
-inductive TraceEq {α : Type*} (I : Independence α) : List α → List α → Prop where
-  | refl (w : List α) : TraceEq I w w
-  | symm {u v : List α} : TraceEq I u v → TraceEq I v u
-  | trans {u v w : List α} : TraceEq I u v → TraceEq I v w → TraceEq I u w
-  | swap (a b : α) (w : List α) (h : I.independent a b) : TraceEq I (a :: b :: w) (b :: a :: w)
-  | append_left (u v w: List α) : TraceEq I v w → TraceEq I (u ++ v) (u ++ w)
-  | append_right (u v w : List α) : TraceEq I v w → TraceEq I (v ++ u) (w ++ u)
-
-def traceSetoid {α : Type*} (I : Independence α) : Setoid (List α) where
-  r := TraceEq I
+def traceSetoid {α : Type*} (I : α → α → Prop) [Independence I] : Setoid (List α) where
+  r := List.PermUpTo I
   iseqv := {
-    refl := by exact TraceEq.refl
-    symm := by exact TraceEq.symm
-    trans := by exact TraceEq.trans
+    refl := by exact List.PermUpTo.refl
+    symm := by exact List.PermUpTo.symm
+    trans := by exact List.PermUpTo.trans
   }
 
-def Trace (I : Independence α) : Type* :=
+def Trace (I : α → α → Prop) [Independence I] : Type* :=
   Quotient (traceSetoid I)
 
 namespace Trace
 
-variable {α : Type*} {I : Independence α}
+variable {α : Type*} {I : α → α → Prop} [Independence I]
 
-def mk (I : Independence α) (w : List α) : Trace I :=
+def mk (I : α → α → Prop) [Independence I] (w : List α) : Trace I :=
   Quotient.mk (traceSetoid I) w
 
 def one : Trace I :=
@@ -52,16 +86,16 @@ def mul (u v : Trace I) : Trace I :=
     (by
       intro n k n' k' heq heq'
       apply Quotient.sound
-      exact TraceEq.trans
-        (TraceEq.append_right k n n' heq)
-        (TraceEq.append_left n' k k' heq')
+      exact List.PermUpTo.trans
+        (List.PermUpTo.append_right k n n' heq)
+        (List.PermUpTo.append_left n' k k' heq')
     )
     u
     v
 
 def toLanguage (u : Trace I) : Language α :=
   Quotient.lift
-    (fun a => { w : List α | TraceEq I w a})
+    (fun a => { w : List α | List.PermUpTo I w a})
     (by
       intro n k h
       ext v
@@ -71,13 +105,13 @@ def toLanguage (u : Trace I) : Language α :=
 
 end Trace
 
-abbrev TraceLanguage (I : Independence α) := Set (Trace I)
+abbrev TraceLanguage (I : α → α → Prop) [Independence I] := Set (Trace I)
 
 namespace TraceLanguage
 
-variable {α : Type*} {I : Independence α}
+variable {α : Type*} {I : α → α → Prop} [Independence I]
 
-def mk (I : Independence α) (l : Language α) : TraceLanguage I :=
+def mk (I : α → α → Prop) [Independence I] (l : Language α) : TraceLanguage I :=
   { t | ∃ w ∈ l, t = Trace.mk I w}
 
 def toLanguage (T : TraceLanguage I) : Language α :=
@@ -86,7 +120,7 @@ def toLanguage (T : TraceLanguage I) : Language α :=
 end TraceLanguage
 
 -- A representative of B if B is a subset of the prefix trace closure of A
-def Representative {α : Type*} (I : Independence α) (A B : Language α) :=
-  ∀ w ∈ B, ∃ v, ∃ u ∈ A, TraceEq I (w ++ v) u
+def Representative {α : Type*} (I : α → α → Prop) [Independence I] (A B : Language α) :=
+  ∀ w ∈ B, ∃ v, ∃ u ∈ A, List.PermUpTo I (w ++ v) u
 
 end Cslib.Concurrency

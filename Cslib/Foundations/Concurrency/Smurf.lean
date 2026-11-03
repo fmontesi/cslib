@@ -21,7 +21,8 @@ structure Branching (α : Type*) where
 variable {State Label : Type*}
 
 -- Defines a set of smurf LTSs.
-structure Smurf (lts : LTS State Label) (I : Independence Label) (B : Branching Label) where
+structure Smurf (lts : LTS State Label) (I : Label → Label → Prop) [Independence I]
+    (B : Branching Label) where
   -- labelling alphabet should be sane
   s : SaneAlphabet Label
   -- conditionals should come in matching sets
@@ -30,12 +31,12 @@ structure Smurf (lts : LTS State Label) (I : Independence Label) (B : Branching 
   -- no local concurrency
   -- pairs of outgoing transitions are either independent or part of a matching set
   u : ∀ s s₁ s₂ l₁ l₂, lts.Tr s l₁ s₁ ∧ lts.Tr s l₂ s₂ →
-    I.independent l₁ l₂ ∨ B.matching l₁ l₂
+    I l₁ l₂ ∨ B.matching l₁ l₂
   -- backward concurrency
-  r : ∀ s s₁ l₁ l₂, I.independent l₁ l₂ ∧ lts.MTr s [l₁, l₂] s₁ →
+  r : ∀ s s₁ l₁ l₂, I l₁ l₂ ∧ lts.MTr s [l₁, l₂] s₁ →
     ∃ s₂, lts.Tr s l₂ s₂
   -- forward concurrency (diamond)
-  f : ∀ s s₁ s₂ l₁ l₂, I.independent l₁ l₂ ∧ lts.Tr s l₁ s₁ ∧ lts.Tr s l₂ s₂ →
+  f : ∀ s s₁ s₂ l₁ l₂, I l₁ l₂ ∧ lts.Tr s l₁ s₁ ∧ lts.Tr s l₂ s₂ →
     ∃ s₃, lts.Tr s₁ l₂ s₃ ∧ lts.Tr s₂ l₁ s₃
 
 variable {Pid : Type*} [DecidableEq Pid]
@@ -48,7 +49,7 @@ def ProjectTrace {pn : Label → Finset Pid} (lst : List Label) (p : Pid) : List
 private lemma smurf_commute_trace
   {pn : Label → Finset Pid}
   {lts : LTS State Label}
-  {I : Independence Label}
+  {I : Label → Label → Prop} [Independence I]
   {B : Branching Label}
   (h : Smurf lts I B)
   (hpn₂ : ∀ l₁ l₂, B.matching l₁ l₂ → (pn l₁) = (pn l₂))
@@ -69,7 +70,7 @@ private lemma smurf_commute_trace
         simp [ProjectTrace, hmem] at hproj
       have hvproj : ProjectTrace (pn := pn) v p = [] := by
         simpa [ProjectTrace, hpa] using hproj
-      have hind : I.independent l₁ a := by
+      have hind : I l₁ a := by
         rcases h.u s s₁ sm l₁ a ⟨ht₁, ha⟩ with hi | hm
         · exact hi
         · have heq := hpn₂ l₁ a hm
@@ -80,7 +81,10 @@ private lemma smurf_commute_trace
       exact ⟨s₃, .stepL hs₁x hxs₃, hes₃⟩
 
 
-theorem ifSmurfThenTraces {pn : Label → Finset Pid} {lts : LTS State Label} {I : Independence Label} {B : Branching Label} {hpn₁ : ∀ l₁ l₂, I.independent l₁ l₂ → Disjoint (pn l₁) (pn l₂)} {hpn₂ : ∀ l₁ l₂, B.matching l₁ l₂ → (pn l₁) = (pn l₂)} (h : Smurf lts I B) :
+theorem ifSmurfThenTraces {pn : Label → Finset Pid} {lts : LTS State Label}
+    {I : Label → Label → Prop} [Independence I] {B : Branching Label}
+    {hpn₁ : ∀ l₁ l₂, I l₁ l₂ → Disjoint (pn l₁) (pn l₂)}
+    {hpn₂ : ∀ l₁ l₂, B.matching l₁ l₂ → (pn l₁) = (pn l₂)} (h : Smurf lts I B) :
   ∀ {s : State} {t₁ t₂ : List Label} {p : Pid},
     t₁ ∈ lts.traces s ∧ t₂ ∈ lts.traces s →
     (
