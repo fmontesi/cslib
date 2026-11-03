@@ -16,7 +16,9 @@ def SaneAlphabet (_ : Type*) : Prop :=
 structure Branching (α : Type*) where
   conditional : α → Prop
   matching : α → α → Prop
-  symm: matching a b → matching b a
+  [symm : Std.Symm matching]
+
+attribute [instance] Branching.symm
 
 variable {State Label : Type*}
 
