@@ -47,46 +47,86 @@ variable {Pid : Type*} [DecidableEq Pid]
 def ProjectTrace {pn : Label → Finset Pid} (lst : List Label) (p : Pid) : List Label :=
   lst.filter (fun l => decide (p ∈ pn l))
 
--- in a Smurf LTS, a label l can commute past an unrelated trace t
-private lemma smurf_commute_trace
-  {pn : Label → Finset Pid}
-  {lts : LTS State Label}
-  {I : Label → Label → Prop} [Independence I]
-  {B : Branching Label}
-  (h : Smurf lts I B)
-  (hpn₂ : ∀ l₁ l₂, B.matching l₁ l₂ → (pn l₁) = (pn l₂))
-  {s s₁ s₂ : State}
-  {l₁ : Label}
-  {u : List Label}
-  {p : Pid}
-  (hp : p ∈ pn l₁)
-  (ht₁ : lts.Tr s l₁ s₁)
-  (hu : lts.MTr s u s₂)
-  (hproj : ProjectTrace (pn := pn) u p = []) :
-  ∃ s₃, lts.MTr s₁ u s₃ ∧ lts.Tr s₂ l₁ s₃ := by
-  induction hu generalizing s₁ l₁ with
-  | refl => exact ⟨s₁, .refl, ht₁⟩
-  | @stepL s a sm v se ha hv ih =>
-      have hpa : p ∉ pn a := by
-        intro hmem
-        simp [ProjectTrace, hmem] at hproj
-      have hvproj : ProjectTrace (pn := pn) v p = [] := by
-        simpa [ProjectTrace, hpa] using hproj
-      have hind : I l₁ a := by
-        rcases h.u s s₁ sm l₁ a ⟨ht₁, ha⟩ with hi | hm
-        · exact hi
-        · have heq := hpn₂ l₁ a hm
-          exact False.elim (hpa (heq ▸ hp))
-      obtain ⟨sx, hs₁x, hsmx⟩ :=
-        h.f s s₁ sm l₁ a ⟨hind, ht₁, ha⟩
-      obtain ⟨s₃, hxs₃, hes₃⟩ := ih (l₁ := l₁) (s₁ := sx) (hp := hp) (ht₁ := hsmx) (hproj := hvproj)
-      exact ⟨s₃, .stepL hs₁x hxs₃, hes₃⟩
+/-- An enabled action either commutes past an unobserved trace or encounters a matching action. -/
+private lemma smurf_commute_or_matching
+    {pn : Label → Finset Pid} {lts : LTS State Label}
+    {I : Label → Label → Prop} [Independence I] {B : Branching Label}
+    (h : Smurf lts I B) {s s₁ s₂ : State} {a : Label} {u : List Label} {p : Pid}
+    (ha : lts.Tr s a s₁) (hu : lts.MTr s u s₂)
+    (hproj : ProjectTrace (pn := pn) u p = []) :
+    (∃ v b, v ++ [b] <+: u ∧ B.matching a b ∧ ProjectTrace (pn := pn) v p = []) ∨
+      ∃ s₃, lts.MTr s₁ u s₃ ∧ lts.Tr s₂ a s₃ := by
+  induction hu generalizing s₁ with
+  | refl => exact Or.inr ⟨s₁, .refl, ha⟩
+  | @stepL s b sm v se hb hv ih =>
+    have hpb : p ∉ pn b := by
+      intro hp
+      simp [ProjectTrace, hp] at hproj
+    have hvproj : ProjectTrace (pn := pn) v p = [] := by
+      simpa [ProjectTrace, hpb] using hproj
+    rcases h.u s s₁ sm a b ⟨ha, hb⟩ with hind | hm
+    · obtain ⟨sx, hs₁x, hsmx⟩ := h.f s s₁ sm a b ⟨hind, ha, hb⟩
+      rcases ih hsmx hvproj with ⟨w, c, hw, hm, hwp⟩ | ⟨s₃, hx₃, he₃⟩
+      · refine Or.inl ⟨b :: w, c, ?_, hm, ?_⟩
+        · obtain ⟨suffix, hsuffix⟩ := hw
+          exact ⟨suffix, congrArg (b :: ·) hsuffix⟩
+        · simpa [ProjectTrace, hpb] using hwp
+      · exact Or.inr ⟨s₃, .stepL hs₁x hx₃, he₃⟩
+    · exact Or.inl ⟨[], b, ⟨v, rfl⟩, hm, rfl⟩
 
+/-- Two traces reaching their first action involving `p` encounter matching actions
+after prefixes whose projections onto `p` agree. -/
+private lemma smurf_first_matching
+    {pn : Label → Finset Pid} {lts : LTS State Label}
+    {I : Label → Label → Prop} [Independence I] {B : Branching Label}
+    (h : Smurf lts I B)
+    (hpn : ∀ a b, I a b → Disjoint (pn a) (pn b))
+    {s s₁ s₂ : State} {u v : List Label} {a b : Label} {p : Pid}
+    (hu : lts.MTr s (u ++ [a]) s₁) (hv : lts.MTr s (v ++ [b]) s₂)
+    (hup : ProjectTrace (pn := pn) u p = [])
+    (hvp : ProjectTrace (pn := pn) v p = []) (hap : p ∈ pn a) (hbp : p ∈ pn b) :
+    ∃ u' v' a' b', u' ++ [a'] <+: u ++ [a] ∧ v' ++ [b'] <+: v ++ [b] ∧
+      B.matching a' b' ∧ ProjectTrace (pn := pn) u' p = ProjectTrace (pn := pn) v' p := by
+  induction u generalizing s s₂ with
+  | nil =>
+    have ha := LTS.MTr.single_invert lts _ _ _ hu
+    obtain ⟨sv, hv', hb'⟩ := hv.split
+    have hb := LTS.MTr.single_invert lts _ _ _ hb'
+    rcases smurf_commute_or_matching h ha hv' hvp with
+      ⟨w, c, hw, hm, hwp⟩ | ⟨sx, _, hva⟩
+    · exact ⟨[], w, a, c, ⟨[], rfl⟩,
+        hw.trans (List.prefix_append v [b]), hm, hwp.symm⟩
+    · rcases h.u sv sx s₂ a b ⟨hva, hb⟩ with hind | hm
+      · exact False.elim ((Finset.disjoint_left.mp (hpn a b hind)) hap hbp)
+      · exact ⟨[], v, a, b, ⟨[], rfl⟩, ⟨[], by simp⟩, hm, hvp.symm⟩
+  | cons c u ih =>
+    obtain ⟨su, hc, hu'⟩ := LTS.MTr.cons_iff.mp hu
+    have hpc : p ∉ pn c := by
+      intro hp
+      simp [ProjectTrace, hp] at hup
+    have hup' : ProjectTrace (pn := pn) u p = [] := by
+      simpa [ProjectTrace, hpc] using hup
+    obtain ⟨sv, hv', hb'⟩ := hv.split
+    have hb := LTS.MTr.single_invert lts _ _ _ hb'
+    rcases smurf_commute_or_matching h hc hv' hvp with
+      ⟨w, d, hw, hm, hwp⟩ | ⟨sx, huv, hvc⟩
+    · exact ⟨[], w, c, d, ⟨u ++ [a], rfl⟩,
+        hw.trans (List.prefix_append v [b]), hm, hwp.symm⟩
+    · rcases h.u sv sx s₂ c b ⟨hvc, hb⟩ with hind | hm
+      · obtain ⟨sy, hxb, _⟩ := h.f sv sx s₂ c b ⟨hind, hvc, hb⟩
+        obtain ⟨u', v', a', b', hu'', hv'', hm, hp⟩ :=
+          ih hu' (huv.stepR lts hxb) hup'
+        refine ⟨c :: u', v', a', b', ?_, hv'', hm, ?_⟩
+        · obtain ⟨suffix, hsuffix⟩ := hu''
+          exact ⟨suffix, congrArg (c :: ·) hsuffix⟩
+        · simpa [ProjectTrace, hpc] using hp
+      · exact ⟨[], v, c, b, ⟨u ++ [a], rfl⟩, ⟨[], by simp⟩, hm, hvp.symm⟩
 
 theorem ifSmurfThenTraces {pn : Label → Finset Pid} {lts : LTS State Label}
     {I : Label → Label → Prop} [Independence I] {B : Branching Label}
     {hpn₁ : ∀ l₁ l₂, I l₁ l₂ → Disjoint (pn l₁) (pn l₂)}
-    {hpn₂ : ∀ l₁ l₂, B.matching l₁ l₂ → (pn l₁) = (pn l₂)} (h : Smurf lts I B) :
+    -- {_hpn₂ : ∀ l₁ l₂, B.matching l₁ l₂ → (pn l₁) = (pn l₂)}
+    (h : Smurf lts I B) :
   ∀ {s : State} {t₁ t₂ : List Label} {p : Pid},
     t₁ ∈ lts.traces s ∧ t₂ ∈ lts.traces s →
     (
@@ -105,166 +145,30 @@ theorem ifSmurfThenTraces {pn : Label → Finset Pid} {lts : LTS State Label}
       )
     )
   := by
-  intro s t₁ t₂ p
-  induction hn : t₁.length + t₂.length using Nat.strong_induction_on generalizing s t₁ t₂ p with
-  | _ n ih =>
-    intro ⟨ht₁, ht₂⟩
-    match t₁, t₂ with
-    | [], [] =>
-      -- both projections empty, so trivially prefixes of one another
-      exact Or.inl (by simp [ProjectTrace])
-    | [], l₂ :: t₂ =>
-      -- l₁ projection empty, so trivially prefix of the other
-      exact Or.inl (by simp [ProjectTrace])
-    | l₁ :: t₁, [] =>
-      -- l₂ projection empty, so trivially prefix of the other
-      exact Or.inr (Or.inl (by simp [ProjectTrace]))
-    | [l₁], [l₂] =>
-      rw [Cslib.LTS.mem_traces_singleton_iff] at ht₁
-      obtain ⟨s₁, htr₁⟩ := ht₁
-      rw [Cslib.LTS.mem_traces_singleton_iff] at ht₂
-      obtain ⟨s₂, htr₂⟩ := ht₂
-      -- two singleton transitions from the initial state are either:
-      rcases h.u s s₁ s₂ l₁ l₂ ⟨htr₁, htr₂⟩ with hind | hm
-      · -- 1) independent, in which case the projections are disjoint and one of the two is empty;
-        have hd : Disjoint (pn l₁) (pn l₂) := hpn₁ l₁ l₂ hind
-        by_cases hp : p ∈ pn l₁
-        · have hp₂ : p ∉ pn l₂ := fun hc => (Finset.disjoint_left.mp hd) hp hc
-          exact Or.inr (Or.inl (by simp [ProjectTrace, hp, hp₂]))
-        · exact Or.inl (by simp [ProjectTrace, hp])
-      · -- or 2) matching
-        exact Or.inr (Or.inr ⟨p, [], [], l₁, l₂, by simp, by simp, hm, by simp⟩)
-    | [l₁], l₂ :: l₂' :: t₂' =>
-      -- one singleton trace, one longer
-      rw [Cslib.LTS.mem_traces_singleton_iff] at ht₁
-      obtain ⟨s₁, htr₁⟩ := ht₁
-      -- rewrite l₂ :: l₂' :: t₂' as u ++ [l]
-      obtain ⟨u, l, hu⟩ := (List.eq_nil_or_concat (l₂ :: l₂' :: t₂')).resolve_left (by simp)
-      rw [hu] at ht₂ ⊢
-      simp only [List.concat_eq_append] at ht₂ ⊢
-
-      -- u is also a trace of lts
-      have htu : u ∈ lts.traces s := by
-        obtain ⟨s₂, htr₂⟩ := ht₂
-        obtain ⟨sm, hum, _⟩ := htr₂.split
-        exact ⟨sm, hum⟩
-
-      have hlt : [l₁].length + u.length < n := by
-        rw [← hn]
-        simp [hu]
-
-      have hsingleton : [l₁] ∈ lts.traces s := by
-        exact ⟨s₁, .stepL htr₁ .refl⟩
-
-      have hres := ih
-        ([l₁].length + u.length)
-        hlt
-        (s := s)
-        (t₁ := [l₁])
-        (t₂ := u)
-        (p := p)
-        rfl
-        ⟨hsingleton, htu⟩
-
-      -- apply the induction hypothesis to l₁ and u
-      rcases hres with hprefix | hprefix | hdiv
-      -- this gives one of three possible results:
-
-      -- 1) ProjectTrace l₁ p <+: ProjectTrace u p
-      --    then ProjectTrace l₁ p <+: ProjectTrace u p <+: ProjectTrace (u ++ [l]) p
-      · apply Or.inl
-        apply hprefix.trans
-        rw [ProjectTrace, ProjectTrace, List.filter_append]
-        exact List.prefix_append _ _
-
-      -- 2) ProjectTrace u p <+: ProjectTrace l₁ p
-      · by_cases hrev : ProjectTrace (pn := pn) [l₁] p <+: ProjectTrace (pn := pn) u p
-        --    then, if also ProjectTrace l₁ p <+: ProjectTrace u p, refer to the previous case
-        · apply Or.inl
-          apply hrev.trans
-          rw [ProjectTrace, ProjectTrace, List.filter_append]
-          exact List.prefix_append _ _
-        --    otherwise, ProjectTrace u p = [] and ProjectTrace l₁ p = l₁
-        · have hp : p ∈ pn l₁ := by
-            by_contra hnot
-            have hempty : ProjectTrace (pn := pn) [l₁] p = [] := by
-              simp [ProjectTrace, hnot]
-            grind
-
-          have hs : ProjectTrace (pn := pn) u p <+: [l₁] := by
-            simpa [ProjectTrace, hp] using hprefix
-
-          have huempty : ProjectTrace (pn := pn) u p = [] := by
-            obtain ⟨suffix, heq⟩ := hs
-            have hlen : (ProjectTrace (pn := pn) u p).length <= 1 := by
-              have h := congrArg List.length heq
-              simp at h
-              omega
-            cases hlist : ProjectTrace (pn := pn) u p with
-            | nil => rfl
-            | cons a as =>
-                have has : as = [] := by
-                  cases as with
-                  | nil => rfl
-                  | cons b bs => simp [hlist] at hlen
-                subst as
-                have he : [a] = [l₁] := by
-                  cases suffix with
-                  | nil => simpa [hlist] using heq
-                  | cons b bs => simp [hlist] at heq
-                exfalso
-                apply hrev
-                rw [hlist, he]
-                simp [ProjectTrace, hp]
-
-          obtain ⟨se, hfull⟩ := ht₂
-          obtain ⟨sm, hum, hlast⟩ := hfull.split
-
-          have hlast' : lts.Tr sm l se := by
-            cases hlast with | stepL ha hb =>
-              cases hb
-              exact ha
-
-          obtain ⟨sx, _, hcomm⟩ :=
-            smurf_commute_trace h hpn₂ hp htr₁ hum huempty
-
-          rcases h.u sm sx se l₁ l ⟨hcomm, hlast'⟩ with hind | hm
-          · have hd := hpn₁ l₁ l hind
-            have hpl : p ∉ pn l := by
-              intro hmem
-              exact (Finset.disjoint_left.mp hd) hp hmem
-            apply Or.inr
-            apply Or.inl
-            have hempty : ProjectTrace (pn := pn) (u ++ [l]) p = [] := by
-              simp only [ProjectTrace, List.filter_append]
-              have huempty' : List.filter (fun a => decide (p ∈ pn a)) u = [] := by
-                exact huempty
-              rw [huempty']
-              simp [hpl]
-            rw [hempty]
-            exact List.nil_prefix
-          · apply Or.inr
-            apply Or.inr
-            refine ⟨p, [], u, l₁, l, ?_, ?_, hm, ?_⟩
-            · simp
-            · rfl
-            · simpa [ProjectTrace] using huempty.symm
-
-      --    it follows from hpn₂ that l₁ and the head of u are disjoint
-      --    commute l₁ along u in the LTS repeatedly using the same argument
-      --    apply the fourth base case to l₁ and l in the resulting state
-
-      -- 3) l₁ and u have a point of divergence
-      --    this witness is also valid for l₁ and (u ++ [l])
-      · rcases hdiv with ⟨q, t₁', t₂', a₁, a₂, hp₁, hp₂, hm, heq⟩
-        apply Or.inr
-        apply Or.inr
-        refine ⟨q, t₁', t₂', a₁, a₂, hp₁, ?_, hm, heq⟩
-        exact hp₂.trans (List.prefix_append u [l])
-
-    | l₁ :: l₁' :: t₁', [l₂] =>
-      sorry
-    | l₁ :: l₁' :: t₁', l₂ :: l₂' :: t₂' =>
-      sorry
+  intro s t₁ t₂ p ⟨ht₁, ht₂⟩
+  by_cases hp₁ : ProjectTrace (pn := pn) t₁ p = []
+  · exact Or.inl (hp₁ ▸ List.nil_prefix)
+  by_cases hp₂ : ProjectTrace (pn := pn) t₂ p = []
+  · exact Or.inr (Or.inl (hp₂ ▸ List.nil_prefix))
+  obtain ⟨a, as, hpa⟩ := List.exists_cons_of_ne_nil hp₁
+  obtain ⟨b, bs, hpb⟩ := List.exists_cons_of_ne_nil hp₂
+  obtain ⟨u, urest, htu, hup, hap, _⟩ := List.filter_eq_cons_iff.mp hpa
+  obtain ⟨v, vrest, htv, hvp, hbp, _⟩ := List.filter_eq_cons_iff.mp hpb
+  have hu : ProjectTrace (pn := pn) u p = [] := List.filter_eq_nil_iff.mpr hup
+  have hv : ProjectTrace (pn := pn) v p = [] := List.filter_eq_nil_iff.mpr hvp
+  have ha : p ∈ pn a := of_decide_eq_true hap
+  have hb : p ∈ pn b := of_decide_eq_true hbp
+  have hprefix₁ : u ++ [a] <+: t₁ := ⟨urest, by simp [htu]⟩
+  have hprefix₂ : v ++ [b] <+: t₂ := ⟨vrest, by simp [htv]⟩
+  obtain ⟨se₁, htr₁⟩ := ht₁
+  obtain ⟨se₂, htr₂⟩ := ht₂
+  rw [htu, ← List.singleton_append, ← List.append_assoc] at htr₁
+  rw [htv, ← List.singleton_append, ← List.append_assoc] at htr₂
+  obtain ⟨s₁, hu', _⟩ := htr₁.split
+  obtain ⟨s₂, hv', _⟩ := htr₂.split
+  obtain ⟨u', v', a', b', hu'', hv'', hm, hp⟩ :=
+    smurf_first_matching h hpn₁ hu' hv' hu hv ha hb
+  exact Or.inr (Or.inr
+    ⟨p, u', v', a', b', hu''.trans hprefix₁, hv''.trans hprefix₂, hm, hp⟩)
 
 end Cslib.Concurrency
