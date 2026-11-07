@@ -984,49 +984,255 @@ theorem ifSmurfThenTraces {pn : Label → Finset Pid} {lts : LTS State Label}
 
 section Helpers2
 
--- a label can commute past an independent trace
-private lemma label_commute_trace
+-- -- a label can commute past an independent prefix trace
+-- private lemma label_commute_prefix
+--     {lts : LTS State Label}
+--     {I : Label → Label → Prop}
+--     [Independence I]
+--     {B : Branching Label}
+--     {s s' s'' : State}
+--     {t : List Label}
+--     {l : Label}
+--     (h : Smurf lts I B)
+--     (ht : lts.MTr s t s')
+--     (hl : lts.Tr s' l s'')
+--     (hind : ∀ m ∈ t, I m l)
+--   : ∃ sl, lts.Tr s l sl ∧ lts.MTr sl t s''
+--   := by
+--     -- structural induction on t, generalising the start and end states
+--     induction t generalizing s s' with
+--     | nil =>
+--       cases ht
+--       exact ⟨s'', hl, .refl⟩
+--     | cons a t' ih =>
+--       obtain ⟨s₁, ha, ht'⟩ := LTS.MTr.cons_iff.mp ht
+--       have ha_ind : I a l := hind a (by simp)
+--       have ht'_ind : ∀ m ∈ t', I m l := fun m hm => hind m (by simp [hm])
+--       -- the tail can be run after `l`
+--       obtain ⟨sl, hl₁, hmtr⟩ := ih ht' hl ht'_ind
+--       -- backward concurrency: `l` was already enabled before `a`
+--       obtain ⟨s₂, hl₂⟩ := h.r s sl a l ⟨ha_ind, .stepL ha (.stepL hl₁ .refl)⟩
+--       -- the forward diamond and determinism identify `sl` with the diamond's corner
+--       obtain ⟨s₃, hl₃, ha₃⟩ := h.f s s₁ s₂ a l ⟨ha_ind, ha, hl₂⟩
+--       obtain rfl : sl = s₃ := h.d s₁ sl s₃ l hl₁ hl₃
+--       exact ⟨s₂, hl₂, .stepL ha₃ hmtr⟩
+
+-- backward concurrency extended to trace and label
+-- t commutes past its prefix l
+private lemma backward_concurrency_trace_label
     {lts : LTS State Label}
     {I : Label → Label → Prop}
     [Independence I]
     {B : Branching Label}
-    {s s' s'' : State}
-    {t : List Label}
-    {l : Label}
     (h : Smurf lts I B)
-    (ht : lts.MTr s t s')
-    (hl : lts.Tr s' l s'')
-    (hind : ∀ m ∈ t, I m l)
-  : ∃ sl, lts.Tr s l sl ∧ lts.MTr sl t s''
+    (t : List Label)
+    (l : Label)
+    (s sₗ sₗₜ : State)
+    (hl : lts.Tr s l sₗ)
+    (ht : lts.MTr sₗ t sₗₜ)
+    (hind : ∀ a ∈ t, I a l)
+  : ∃ sₜ, lts.MTr s t sₜ
   := by
-    -- structural induction on t, generalising the start and end states
-    induction t generalizing s s' with
-    | nil =>
-      cases ht
-      exact ⟨s'', hl, .refl⟩
+    -- structural induction on the trace, generalising the states
+    induction t generalizing s sₗ sₗₜ with
+    | nil => exact ⟨s, .refl⟩
     | cons a t' ih =>
       obtain ⟨s₁, ha, ht'⟩ := LTS.MTr.cons_iff.mp ht
-      have ha_ind : I a l := hind a (by simp)
-      have ht'_ind : ∀ m ∈ t', I m l := fun m hm => hind m (by simp [hm])
-      -- the tail can be run after `l`
-      obtain ⟨sl, hl₁, hmtr⟩ := ih ht' hl ht'_ind
-      -- backward concurrency: `l` was already enabled before `a`
-      obtain ⟨s₂, hl₂⟩ := h.r s sl a l ⟨ha_ind, .stepL ha (.stepL hl₁ .refl)⟩
-      -- the forward diamond and determinism identify `sl` with the diamond's corner
-      obtain ⟨s₃, hl₃, ha₃⟩ := h.f s s₁ s₂ a l ⟨ha_ind, ha, hl₂⟩
-      obtain rfl : sl = s₃ := h.d s₁ sl s₃ l hl₁ hl₃
-      exact ⟨s₂, hl₂, .stepL ha₃ hmtr⟩
+      have ha_ind : I a l := hind a List.mem_cons_self
+      have hl_ind : I l a := Std.Symm.symm (r := I) (a := a) (b := l) ha_ind
+      -- backward concurrency: `a` is already enabled before `l`
+      obtain ⟨s₂, htra⟩ := h.r s s₁ l a ⟨hl_ind, .stepL hl (.stepL ha .refl)⟩
+      -- the forward diamond and determinism identify the two targets of `a`
+      obtain ⟨s₃, hl₃, ha₃⟩ := h.f s s₂ sₗ a l ⟨ha_ind, htra, hl⟩
+      rw [h.d sₗ s₃ s₁ a ha₃ ha] at hl₃
+      -- the tail runs after `a` from `s₂`, by the induction hypothesis
+      obtain ⟨sₜ, htail⟩ := ih s₂ s₁ sₗₜ hl₃ ht' fun m hm => hind m (List.mem_cons_of_mem a hm)
+      exact ⟨sₜ, .stepL htra htail⟩
 
--- two traces from the same state will either fully commute or result in a match at some point
-private lemma commute_or_match
-    {pn : Label → Finset Pid}
+-- backwards concurrency extended to label and trace
+-- l commutes past its prefix t
+private lemma backward_concurrency_label_trace
     {lts : LTS State Label}
     {I : Label → Label → Prop}
     [Independence I]
     {B : Branching Label}
-    (hpn₀ : ∀ l, (pn l).Nonempty)
-    (hpn₁ : ∀ l₁ l₂, I l₁ l₂ → Disjoint (pn l₁) (pn l₂))
-    (hpn₂ : ∀ l₁ l₂, B.matching l₁ l₂ → (pn l₁) = (pn l₂))
+    (h : Smurf lts I B)
+    (l : Label)
+    (t : List Label)
+    (s sₜ sₜₗ : State)
+    (ht : lts.MTr s t sₜ)
+    (hl : lts.Tr sₜ l sₜₗ)
+    (hind : ∀ a ∈ t, I a l)
+  : ∃ sₗ, lts.Tr s l sₗ
+  := by
+    induction t generalizing s sₜ sₜₗ with
+    | nil => exact ⟨sₜₗ, by rwa [LTS.MTr.nil_eq lts ht]⟩
+    | cons a t' ih =>
+      obtain ⟨s₁, ha, ht'⟩ := LTS.MTr.cons_iff.mp ht
+      have ha_ind : I a l := hind a List.mem_cons_self
+      obtain ⟨sₗ, hl'⟩ := ih s₁ sₜ sₜₗ ht' hl fun m hm => hind m (List.mem_cons_of_mem a hm)
+      exact h.r s sₗ a l ⟨ha_ind, .stepL ha (.stepL hl' .refl)⟩
+
+-- backward concurrency extended to trace and trace
+-- t₁ commutes past its prefix t₂
+private lemma backward_concurrency_trace_trace
+    {lts : LTS State Label}
+    {I : Label → Label → Prop}
+    [Independence I]
+    {B : Branching Label}
+    (h : Smurf lts I B)
+    (t₁ t₂ : List Label)
+    (s s₂ s₂₁ : State)
+    (ht₂ : lts.MTr s t₂ s₂)
+    (ht₁ : lts.MTr s₂ t₁ s₂₁)
+    (hind : ∀ a ∈ t₁, ∀ b ∈ t₂, I a b)
+  : ∃ s₁, lts.MTr s t₁ s₁
+  := by
+    induction t₂ generalizing s s₂ with
+    | nil => exact ⟨s₂₁, by rwa [LTS.MTr.nil_eq lts ht₂]⟩
+    | cons b t₂' ih =>
+      obtain ⟨s_b, hb, ht₂'⟩ := LTS.MTr.cons_iff.mp ht₂
+      have hind_b : ∀ a ∈ t₁, I a b := fun a ha => hind a ha b List.mem_cons_self
+      obtain ⟨s₁, ht₁'⟩ := ih s_b s₂ ht₂' ht₁ fun a ha c hc =>
+        hind a ha c (List.mem_cons_of_mem b hc)
+      exact backward_concurrency_trace_label h t₁ b s s_b s₁ hb ht₁' hind_b
+
+-- diamond extended to trace and label
+-- t commutes past l
+private lemma diamond_trace_label
+    {lts : LTS State Label}
+    {I : Label → Label → Prop}
+    [Independence I]
+    {B : Branching Label}
+    (h : Smurf lts I B)
+    (t : List Label)
+    (l : Label)
+    (s sₜ sₗ : State)
+    (ht : lts.MTr s t sₜ)
+    (hl : lts.Tr s l sₗ)
+    (hind : ∀ a ∈ t, I a l)
+  : ∃ sₜₗ, lts.Tr sₜ l sₜₗ
+  := by
+    induction t generalizing s sₜ sₗ with
+    | nil => exact ⟨sₗ, by rwa [← LTS.MTr.nil_eq lts ht]⟩
+    | cons a t' ih =>
+      obtain ⟨s₁, ha, ht'⟩ := LTS.MTr.cons_iff.mp ht
+      have ha_ind : I a l := hind a List.mem_cons_self
+      obtain ⟨s₃, hl₁, _⟩ := h.f s s₁ sₗ a l ⟨ha_ind, ha, hl⟩
+      exact ih s₁ sₜ s₃ ht' hl₁ fun m hm => hind m (List.mem_cons_of_mem a hm)
+
+-- diamond extended to label and trace
+-- l commutes past t
+private lemma diamond_label_trace
+    {lts : LTS State Label}
+    {I : Label → Label → Prop}
+    [Independence I]
+    {B : Branching Label}
+    (h : Smurf lts I B)
+    (l : Label)
+    (t : List Label)
+    (s sₗ sₜ : State)
+    (hl : lts.Tr s l sₗ)
+    (ht : lts.MTr s t sₜ)
+    (hind : ∀ a ∈ t, I a l)
+  : ∃ sₗₜ, lts.MTr sₗ t sₗₜ
+  := by
+    induction t generalizing s sₗ sₜ with
+    | nil => exact ⟨sₗ, .refl⟩
+    | cons a t' ih =>
+      obtain ⟨s₁, ha, ht'⟩ := LTS.MTr.cons_iff.mp ht
+      have ha_ind : I a l := hind a List.mem_cons_self
+      obtain ⟨s₂, hl₁, ha₂⟩ := h.f s s₁ sₗ a l ⟨ha_ind, ha, hl⟩
+      obtain ⟨sₗₜ, htail⟩ := ih s₁ s₂ sₜ hl₁ ht' fun m hm => hind m (List.mem_cons_of_mem a hm)
+      exact ⟨sₗₜ, .stepL ha₂ htail⟩
+
+-- diamond extended to trace and trace
+-- t₁ commutes past t₂
+private lemma diamond_trace_trace
+    {lts : LTS State Label}
+    {I : Label → Label → Prop}
+    [Independence I]
+    {B : Branching Label}
+    (h : Smurf lts I B)
+    (t₁ t₂ : List Label)
+    (s s₁ s₂ : State)
+    (ht₁ : lts.MTr s t₁ s₁)
+    (ht₂ : lts.MTr s t₂ s₂)
+    (hind : ∀ a ∈ t₁, ∀ b ∈ t₂, I a b)
+  : ∃ s₂₁, lts.MTr s₂ t₁ s₂₁
+  := by
+    induction t₂ generalizing s s₁ s₂ with
+    | nil => exact ⟨s₁, by rwa [← LTS.MTr.nil_eq lts ht₂]⟩
+    | cons b t₂' ih =>
+      obtain ⟨s_b, hb, ht₂'⟩ := LTS.MTr.cons_iff.mp ht₂
+      have hind_b : ∀ a ∈ t₁, I a b := fun a ha => hind a ha b List.mem_cons_self
+      obtain ⟨s_b', ht₁'⟩ := diamond_label_trace h b t₁ s s_b s₁ hb ht₁ hind_b
+      exact ih s_b s_b' s₂ ht₁' ht₂' fun a ha c hc => hind a ha c (List.mem_cons_of_mem b hc)
+
+-- two lists whose elements are pairwise independent can be swapped
+private lemma permUpTo_append_comm {I : Label → Label → Prop} [Independence I] :
+    ∀ u v : List Label,
+      (∀ a ∈ u, ∀ b ∈ v, I a b) → List.PermUpTo I (u ++ v) (v ++ u) := by
+  intro u
+  induction u with
+  | nil => intro v _; simpa using List.PermUpTo.refl v
+  | cons a u ih =>
+    intro v h
+    have hmove : ∀ v' : List Label, (∀ b ∈ v', I a b) →
+        List.PermUpTo I (a :: (v' ++ u)) (v' ++ (a :: u)) := by
+      intro v'
+      induction v' with
+      | nil => intro _; simpa using List.PermUpTo.refl (a :: u)
+      | cons b v' ihv =>
+        intro hb
+        exact (List.PermUpTo.swap a b (v' ++ u) (Or.inl (hb b List.mem_cons_self))).trans
+          (List.PermUpTo.cons b (ihv fun c hc => hb c (List.mem_cons_of_mem b hc)))
+    exact (List.PermUpTo.cons a
+      (ih v fun x hx y hy => h x (List.mem_cons_of_mem a hx) y hy)).trans
+      (hmove v fun b hb => h a List.mem_cons_self b hb)
+
+/-- If a prefix of an execution `Y` ends in a label `b` that does not commute with `lX`,
+where `lX` is enabled after an execution `X` independent of `Y`, then `lX` and `b`
+match or are equal. -/
+private lemma counterexample_match
+    {lts : LTS State Label}
+    {I : Label → Label → Prop}
+    [Independence I]
+    {B : Branching Label}
+    (h : Smurf lts I B)
+    {X Y : List Label}
+    {s xEnd xEnd' yEnd : State}
+    {lX b : Label}
+    {u v : List Label}
+    (htX : lts.MTr s X xEnd)
+    (hX : lts.Tr xEnd lX xEnd')
+    (htY : lts.MTr s Y yEnd)
+    (hind : ∀ w ∈ X, ∀ z ∈ Y, I w z)
+    (hY : Y = u ++ [b] ++ v)
+    (hu : ∀ z ∈ u, I lX z)
+    (hb : ¬ I lX b)
+  : B.matching lX b ∨ lX = b
+  := by
+    obtain ⟨sᵤ, hub, _⟩ := LTS.MTr.split (by rwa [← hY] : lts.MTr s ((u ++ [b]) ++ v) yEnd)
+    have hind' : ∀ x ∈ u ++ [b], ∀ w ∈ X, I x w := fun x hx w hw =>
+      Std.Symm.symm (r := I) (a := w) (b := x)
+        (hind w hw x (by rw [hY]; exact List.mem_append_left v hx))
+    have hu' : ∀ z ∈ u, I z lX := fun z hz =>
+      Std.Symm.symm (r := I) (a := lX) (b := z) (hu z hz)
+    obtain ⟨s₅, hsub⟩ := diamond_trace_trace h (u ++ [b]) X s sᵤ xEnd hub htX hind'
+    obtain ⟨s₃, h₃, h₄⟩ := mtr_split_last (l := u) (a := b) hsub
+    obtain ⟨s₄, h₅⟩ := diamond_trace_label h u lX xEnd s₃ xEnd' h₃ hX hu'
+    by_cases heq : lX = b
+    · exact Or.inr heq
+    · exact Or.inl ((h.u s₃ s₄ s₅ lX b heq ⟨h₅, h₄⟩).resolve_left hb)
+
+-- two traces from the same state will either fully commute or result in a match at some point
+omit [DecidableEq Pid] in
+private lemma commute_or_match
+    {lts : LTS State Label}
+    {I : Label → Label → Prop}
+    [Independence I]
+    {B : Branching Label}
     (h : Smurf lts I B)
     -- plus a concrete state and two traces
     (s s₁ s₂ : State)
@@ -1057,30 +1263,111 @@ private lemma commute_or_match
       obtain ⟨s₁', ht₁', ha₀⟩ := mtr_split_last (l := t₁') (a := a₀) ht₁
       obtain ⟨s₂', ht₂', hb₀⟩ := mtr_split_last (l := t₂') (a := b₀) ht₂
       -- apply induction hypothesis to t₁' and t₂'
-      have hlen : t₁'.length + t₂'.length < n := by grind
-      rcases ih (t₁'.length + t₂'.length) hlen s s₁' s₂' t₁' t₂' ht₁' ht₂' rfl with hind | hmatch
-      · -- everything commutes
-        -- TODO: a₀, b₀ not part of IH, need something to commute them back or prove correctness in spite
-        -- check whether a₀ and b₀ are equal
-        -- by_cases heq : a₀ = b₀
-        -- · apply Or.inr
-          -- exists t₁', t₂', a₀, b₀, [], [], rfl, rfl
-          -- sorry
-        -- if a₀ and b₀ are equal, then witness
-        -- otherwise, helper lemma to commute both a₀ and b₀ back to s
-        -- apply Smurf.u to a₀ and b₀ in s
-        -- if the two are independent, then everything is independent
-        -- otherwise the two match, which is a witness
-        sorry
-      · -- match or equality found: also holds for t₁, t₂
-        obtain ⟨u₁, u₂, a, b, v₁, v₂, _, _, _, _, _, _⟩ := hmatch
-        apply Or.inr
-        have _ : t₁' ++ [a₀] = u₁ ++ a :: (v₁ ++ [a₀]) := by grind
-        have _ : t₂' ++ [b₀] = u₂ ++ b :: (v₂ ++ [b₀]) := by grind
-        exists u₁, u₂, a, b, v₁ ++ [a₀], v₂ ++ [b₀]
+      rcases ih (t₁'.length + t₂'.length) (by grind) s s₁' s₂' t₁' t₂' ht₁' ht₂' rfl
+        with hind | hmatch
+      · -- t₁' and t₂' commute
+        by_cases ha₀c : ∃ u b₁ v, t₂' = u ++ [b₁] ++ v ∧ (∀ b ∈ u, I a₀ b) ∧ ¬ I a₀ b₁
+        · -- a₀ does not commute with t₂': the counterexample provides a witness
+          obtain ⟨u, b₁, v, hubv, ha₀u, ha₀b₁⟩ := ha₀c
+          have hm : B.matching a₀ b₁ ∨ a₀ = b₁ :=
+            counterexample_match h ht₁' ha₀ ht₂' hind hubv ha₀u ha₀b₁
+          refine Or.inr ⟨t₁', u, a₀, b₁, [], v ++ [b₀], ?_, ?_, hm, ?_, ?_, ?_⟩
+          all_goals grind
+        -- otherwise a₀ commutes with t₂'
+        -- absence of a counterexample prefix means commutation with every label
+        have key : ∀ (x : Label) (L : List Label),
+            (¬ ∃ u b v, L = u ++ [b] ++ v ∧ (∀ a ∈ u, I x a) ∧ ¬ I x b) →
+            ∀ a ∈ L, I x a := by
+          intro x L
+          induction L with
+          | nil => simp
+          | cons d L ih =>
+            intro hno
+            by_cases hd : I x d
+            · intro c hc
+              rcases List.mem_cons.mp hc with rfl | hc
+              · exact hd
+              · exact ih (fun ⟨u, b, v, hL, hu, hb⟩ =>
+                  hno ⟨d :: u, b, v, by simp [hL],
+                    fun y hy => by
+                      rcases List.mem_cons.mp hy with rfl | hy
+                      · exact hd
+                      · exact hu y hy, hb⟩) c hc
+            · exact absurd ⟨[], d, L, rfl, by simp, hd⟩ hno
+        have ha₀t₂' : ∀ c ∈ t₂', I a₀ c := key a₀ t₂' ha₀c
+        have hind : ∀ a ∈ t₂', ∀ b ∈ (t₁' ++ [a₀]), I a b := by
+          intro a ha b hb
+          rcases List.mem_append.mp hb with hb | hb
+          · exact Std.Symm.symm (r := I) (a := b) (b := a) (hind b hb a ha)
+          · rw [List.mem_singleton] at hb
+            rw [hb]
+            exact Std.Symm.symm (r := I) (a := a₀) (b := a) (ha₀t₂' a ha)
+        -- check whether there exists a counterexample for b₀ commuting with t₁' ++ [a₀]
+        by_cases hb₀c : ∃ u a₁ v, t₁' = u ++ [a₁] ++ v ∧ (∀ a ∈ u, I b₀ a) ∧ ¬ I b₀ a₁
+        · -- b₀ does not commute with t₁': the counterexample provides a witness
+          obtain ⟨u, a₁, v, huv, hb₀u, hb₀a₁⟩ := hb₀c
+          have hm : B.matching a₁ b₀ ∨ a₁ = b₀ :=
+            (counterexample_match h ht₂' hb₀ ht₁'
+              (fun w hw z hz => hind w hw z (List.mem_append_left [a₀] hz)) huv hb₀u hb₀a₁).elim
+              (fun h => Or.inl (matching_comm h)) fun h => Or.inr h.symm
+          have hb₀u' : ∀ y ∈ u, I y b₀ := fun y hy =>
+            Std.Symm.symm (r := I) (a := b₀) (b := y) (hb₀u y hy)
+          refine Or.inr ⟨u, t₂', a₁, b₀, v ++ [a₀], [], ?_, ?_, hm, ?_, ?_, ?_⟩
+          all_goals grind
+        -- otherwise b₀ commutes with every label of t₁'; co-enable a₀ and b₀
+        have hb₀t₁' : ∀ c ∈ t₁', I b₀ c := key b₀ t₁' hb₀c
+        have hind₂ : ∀ a ∈ t₁', ∀ b ∈ t₂', I a b := fun a ha b hb =>
+          Std.Symm.symm (r := I) (a := b) (b := a) (hind b hb a (List.mem_append_left [a₀] ha))
+        obtain ⟨ρ, hcomm₂⟩ := diamond_trace_trace h t₂' t₁' s s₂' s₁' ht₂' ht₁'
+          fun a ha b hb => hind a ha b (List.mem_append_left [a₀] hb)
+        obtain ⟨ρ', hcomm₁⟩ := diamond_trace_trace h t₁' t₂' s s₁' s₂' ht₁' ht₂' hind₂
+        have hρ : ρ = ρ' := mtr_det_permUpTo h (permUpTo_append_comm t₁' t₂' hind₂)
+          (LTS.MTr.comp lts ht₁' hcomm₂) (LTS.MTr.comp lts ht₂' hcomm₁)
+        obtain ⟨sa, hρa₀⟩ := diamond_trace_label h t₂' a₀ s₁' ρ s₁ hcomm₂ ha₀
+          fun a ha => Std.Symm.symm (r := I) (a := a₀) (b := a) (ha₀t₂' a ha)
+        obtain ⟨sb, hρ'b₀⟩ := diamond_trace_label h t₁' b₀ s₂' ρ' s₂ hcomm₁ hb₀
+          fun a ha => Std.Symm.symm (r := I) (a := b₀) (b := a) (hb₀t₁' a ha)
+        have hindW : ∀ x ∈ t₁', ∀ y ∈ t₂', I x y := fun x hx y hy =>
+          Std.Symm.symm (r := I) (a := y) (b := x) (hind y hy x (List.mem_append_left [a₀] hx))
+        have hb₀W : ∀ x ∈ t₁', I x b₀ := fun x hx =>
+          Std.Symm.symm (r := I) (a := b₀) (b := x) (hb₀t₁' x hx)
+        by_cases heq : a₀ = b₀
+        · exact Or.inr ⟨t₁', t₂', a₀, b₀, [], [], rfl, rfl, Or.inr heq, hindW, ha₀t₂', hb₀W⟩
+        · rcases h.u ρ sa sb a₀ b₀ heq ⟨hρa₀, hρ.symm ▸ hρ'b₀⟩ with hI | hm
+          · apply Or.inl
+            intro a ha b hb
+            simp only [List.mem_append, List.mem_singleton] at ha hb
+            rcases ha with ha | rfl <;> rcases hb with hb | rfl
+            exacts [hindW a ha b hb, hb₀W a ha, ha₀t₂' b hb, hI]
+          · exact Or.inr ⟨t₁', t₂', a₀, b₀, [], [], rfl, rfl, Or.inl hm, hindW, ha₀t₂', hb₀W⟩
+      · -- a witness for t₁', t₂' also works for t₁, t₂
+        obtain ⟨u₁, u₂, a, b, v₁, v₂, h1, h2, hw, hc, hl, hr⟩ := hmatch
+        exact Or.inr ⟨u₁, u₂, a, b, v₁ ++ [a₀], v₂ ++ [b₀], by grind, by grind, hw, hc, hl, hr⟩
+
+/-- Two lists are either prefix-comparable, or have a longest common prefix followed by
+distinct labels. -/
+private lemma prefix_or_exists_first_diff :
+    ∀ u v : List Label,
+      u <+: v ∨ v <+: u ∨
+        ∃ t₀ u' v' x₁ x₂, u = t₀ ++ [x₁] ++ u' ∧ v = t₀ ++ [x₂] ++ v' ∧ x₁ ≠ x₂ := by
+  intro u
+  induction u with
+  | nil => intro v; exact Or.inl List.nil_prefix
+  | cons a u ih =>
+    intro v
+    cases v with
+    | nil => exact Or.inr (Or.inl List.nil_prefix)
+    | cons b v =>
+      by_cases hab : a = b
+      · subst b
+        rcases ih v with h | h | ⟨t₀, u', v', x₁, x₂, hu, hv, hne⟩
+        · exact Or.inl (List.cons_prefix_cons.mpr ⟨rfl, h⟩)
+        · exact Or.inr (Or.inl (List.cons_prefix_cons.mpr ⟨rfl, h⟩))
+        · exact Or.inr (Or.inr ⟨a :: t₀, u', v', x₁, x₂, by simp [hu], by simp [hv], hne⟩)
+      · exact Or.inr (Or.inr ⟨[], u, v, a, b, rfl, rfl, hab⟩)
 
 -- lemma to cover the two (symmetric) prefix cases from the main theorem
-private lemma prefixCase
+private lemma prefix_case
     -- all the parameters from the main theorem
     {pn : Label → Finset Pid}
     {lts : LTS State Label}
@@ -1117,7 +1404,80 @@ private lemma prefixCase
     -- check whether p ∈ pn l₁
     by_cases hp₁ : p ∈ pn l₁
     · -- p ∈ pn l₁
-      -- t₁ and t₂ have a longest prefix t₀
+      -- t₁ ++ [l₁] and t₂ ++ [l₂] are either prefix-comparable or have a longest common
+      -- prefix t₀ followed by distinct labels
+      rcases prefix_or_exists_first_diff (t₁ ++ [l₁]) (t₂ ++ [l₂]) with hpre | hpre | hdiff
+      · exact Or.inl (hpre.filter _)
+      · exact Or.inr (Or.inl (hpre.filter _))
+      -- third case: longest common prefix t₀ with distinct following labels x₁, x₂
+      obtain ⟨t₀, t₁', t₂', x₁, x₂, h₁, h₂, hx⟩ := hdiff
+      -- x₁ ++ t₁' and x₂ ++ t₂' are both traces from the resulting state of t₀
+      have ⟨s₀, ht₀⟩ : ∃ s₀, lts.MTr s t₀ s₀ := by
+        have hmtr : lts.MTr s (t₀ ++ ([x₁] ++ t₁')) s₁' := by
+          rw [← List.append_assoc, ← h₁]
+          exact LTS.MTr.stepR lts ht₁ hl₁
+        obtain ⟨s₀, ht₀, _⟩ := LTS.MTr.split hmtr
+        exact ⟨s₀, ht₀⟩
+      have ht₁' : lts.MTr s₀ ([x₁] ++ t₁') s₁' := by
+        have hmtr : lts.MTr s (t₀ ++ ([x₁] ++ t₁')) s₁' := by
+          rw [← List.append_assoc, ← h₁]
+          exact LTS.MTr.stepR lts ht₁ hl₁
+        obtain ⟨s₀', ht₀', hrest⟩ := LTS.MTr.split hmtr
+        rw [mtr_det h.d ht₀' ht₀] at hrest
+        exact hrest
+      have ht₂' : lts.MTr s₀ ([x₂] ++ t₂') s₂' := by
+        have hmtr : lts.MTr s (t₀ ++ ([x₂] ++ t₂')) s₂' := by
+          rw [← List.append_assoc, ← h₂]
+          exact LTS.MTr.stepR lts ht₂ hl₂
+        obtain ⟨s₀', ht₀', hrest⟩ := LTS.MTr.split hmtr
+        rw [mtr_det h.d ht₀' ht₀] at hrest
+        exact hrest
+      -- from commute_or_match:
+      rcases commute_or_match h s₀ s₁' s₂' ([x₁] ++ t₁') ([x₂] ++ t₂') ht₁' ht₂' with h1 | h2
+      · -- 1) x₁ ++ t₁' and x₂ ++ t₂' fully commute
+        -- then at least one of their projections on p must be empty
+        have hempty : ProjectTrace (pn := pn) ([x₁] ++ t₁') p = []
+            ∨ ProjectTrace (pn := pn) ([x₂] ++ t₂') p = [] := by
+          by_cases h₁p : ProjectTrace (pn := pn) ([x₁] ++ t₁') p = []
+          · exact Or.inl h₁p
+          · right
+            -- some label of the first suffix is observed by `p`
+            obtain ⟨a, ha, hap⟩ : ∃ a ∈ [x₁] ++ t₁', p ∈ pn a := by
+              by_contra hcon
+              exact h₁p (projectTrace_eq_nil fun l hl hpl => hcon ⟨l, hl, hpl⟩)
+            -- full commutation makes every label of the second suffix unobserved
+            exact projectTrace_eq_nil fun b hb =>
+              Finset.disjoint_left.mp (hpn₁ a b (h1 a ha b hb)) hap
+        -- and then it is a prefix of the other
+        rcases hempty with hpre₁ | hpre₂
+        · -- only `t₀` contributes to the projection of `t₁ ++ [l₁]`
+          refine Or.inl ?_
+          have hL : ProjectTrace (pn := pn) (t₀ ++ ([x₁] ++ t₁')) p
+              = ProjectTrace (pn := pn) t₀ p := by
+            rw [projectTrace_append t₀ ([x₁] ++ t₁'), hpre₁, List.append_nil]
+          have hR : ProjectTrace (pn := pn) (t₀ ++ ([x₂] ++ t₂')) p
+              = ProjectTrace (pn := pn) t₀ p ++ ProjectTrace (pn := pn) ([x₂] ++ t₂') p :=
+            projectTrace_append t₀ ([x₂] ++ t₂')
+          rw [h₁, h₂, List.append_assoc, List.append_assoc, hL, hR]
+          exact List.prefix_append _ _
+        · -- only `t₀` contributes to the projection of `t₂ ++ [l₂]`
+          refine Or.inr (Or.inl ?_)
+          have hL : ProjectTrace (pn := pn) (t₀ ++ ([x₂] ++ t₂')) p
+              = ProjectTrace (pn := pn) t₀ p := by
+            rw [projectTrace_append t₀ ([x₂] ++ t₂'), hpre₂, List.append_nil]
+          have hR : ProjectTrace (pn := pn) (t₀ ++ ([x₁] ++ t₁')) p
+              = ProjectTrace (pn := pn) t₀ p ++ ProjectTrace (pn := pn) ([x₁] ++ t₁') p :=
+            projectTrace_append t₀ ([x₁] ++ t₁')
+          rw [h₁, h₂, List.append_assoc, List.append_assoc, hL, hR]
+          exact List.prefix_append _ _
+      -- 2) the two find a match or equality at some point
+      obtain ⟨u₁, u₂, a, b, v₁, v₂, _, _, hmoreq, _, _, _⟩ := h2
+      rcases hmoreq with hm | heq
+      · -- a match provides a witness
+        sorry
+      -- otherwise, they encountered an equality
+      -- in case of an equality, the two p-labels can commute back until t₀
+      -- repeat commute_or_match by induction
       sorry
     · -- p ∉ pn l₁
       -- then projection of t₁ trivially prefixes that of t₂
@@ -1130,7 +1490,7 @@ private lemma prefixCase
 
 end Helpers2
 
-theorem ifSmurfThenTracesLuc
+theorem if_smurf_then_traces
     {pn : Label → Finset Pid}
     {lts : LTS State Label}
     {I : Label → Label → Prop}
@@ -1186,7 +1546,7 @@ theorem ifSmurfThenTracesLuc
       (s₁ := u₁) (s₂ := u₂) ht₁' ht₂' rfl with h1 | h2 | h3
   · -- the projection of t₁' on p is a prefix of that of t₂
     -- outsource to helper function
-    have hlem := prefixCase hpn₀ hpn₁ hpn₂ h s p t₁' t₂' l₁ l₂ ht₁' ht₂' hlast₁ hlast₂ h1
+    have hlem := prefix_case hpn₀ hpn₁ hpn₂ h s p t₁' t₂' l₁ l₂ ht₁' ht₂' hlast₁ hlast₂ h1
     rcases hlem with hlem₁ | hlem₂ | hlem₃
     · grind
     · grind
@@ -1198,7 +1558,7 @@ theorem ifSmurfThenTracesLuc
       exists q, x₁, x₂, m₁, m₂
   · -- the projection of t₂' on p is a prefix of that of t₁
     -- case is symmetric to the previous case
-    have hlem := prefixCase hpn₀ hpn₁ hpn₂ h s p t₂' t₁' l₂ l₁ ht₂' ht₁' hlast₂ hlast₁ h2
+    have hlem := prefix_case hpn₀ hpn₁ hpn₂ h s p t₂' t₁' l₂ l₁ ht₂' ht₁' hlast₂ hlast₁ h2
     rcases hlem with hlem₁ | hlem₂ | hlem₃
     · grind
     · grind
