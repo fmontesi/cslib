@@ -1226,9 +1226,9 @@ private lemma counterexample_match
     · exact Or.inr heq
     · exact Or.inl ((h.u s₃ s₄ s₅ lX b heq ⟨h₅, h₄⟩).resolve_left hb)
 
--- two traces from the same state will either fully commute or result in a match at some point
+-- two traces from the same state will either fully commute, or result in a match or an equality
 omit [DecidableEq Pid] in
-private lemma commute_or_match
+private lemma commute_or_matcheq
     {lts : LTS State Label}
     {I : Label → Label → Prop}
     [Independence I]
@@ -1367,6 +1367,50 @@ private lemma prefix_or_exists_first_diff :
       · exact Or.inr (Or.inr ⟨[], u, v, a, b, rfl, rfl, hab⟩)
 
 -- lemma to cover the two (symmetric) prefix cases from the main theorem
+private lemma prefix_case2
+    -- all the parameters from the main theorem
+    {pn : Label → Finset Pid}
+    {lts : LTS State Label}
+    {I : Label → Label → Prop}
+    [Independence I]
+    {B : Branching Label}
+    (hpn₀ : ∀ l, (pn l).Nonempty)
+    (hpn₁ : ∀ l₁ l₂, I l₁ l₂ → Disjoint (pn l₁) (pn l₂))
+    (hpn₂ : ∀ l₁ l₂, B.matching l₁ l₂ → (pn l₁) = (pn l₂))
+    (h : Smurf lts I B)
+    -- plus a concrete state and process, two traces and tails
+    -- one of the two projections of the traces is a prefix of the other
+    (s : State)
+    (p : Pid)
+    (t₁ t₂ : List Label)
+    (l₁ l₂ : Label)
+    (ht₁ : lts.MTr s t₁ s₁) (ht₂ : lts.MTr s t₂ s₂)
+    (hl₁ : lts.Tr s₁ l₁ s₁') (hl₂ : lts.Tr s₂ l₂ s₂')
+    (hprefix : ProjectTrace (pn := pn) t₁ p <+: ProjectTrace (pn := pn) t₂ p)
+  : ProjectTrace (pn := pn) (t₁ ++ [l₁]) p <+: ProjectTrace (pn := pn) (t₂ ++ [l₂]) p
+  ∨
+  ProjectTrace (pn := pn) (t₂ ++ [l₂]) p <+: ProjectTrace (pn := pn) (t₁ ++ [l₁]) p
+  ∨
+  (
+    ∃ (q : Pid) (t₁' t₂' : List Label) (m₁ m₂ : Label),
+      (
+        t₁' ++ [m₁] <+: t₁ ++ [l₁]
+        ∧ t₂' ++ [m₂] <+: t₂ ++ [l₂]
+        ∧ B.matching m₁ m₂
+        ∧ ProjectTrace (pn := pn) t₁' q = ProjectTrace (pn := pn) t₂' q
+      )
+  )
+  := by
+    -- induction of some kind; combined length of t₁ ++ [l₁] and t₂ ++ [l₂]?
+    -- induction hypothesis (and statement proven by it) must be weaker: for all prefixes of t₁ ++ [l₁], t₂ ++ [l₂], there exist PermUpto traces that have a common prefix and the tail either fully commutes or hits a match (not an eq); actually slightly different, must apply to (*); perhaps all traces up to a certain length (so not necessarily prefixes of t₁ ++ [l₁], t₂ ++ [l₂]?
+      -- apply commute_or_matcheq
+      -- if the two commute, all done
+      -- otherwise there is either a match or an equality
+      -- if match, then done
+      -- (*) if eq, commute eq back to add it to the prefix, then repeat
+    sorry
+
+-- lemma to cover the two (symmetric) prefix cases from the main theorem
 private lemma prefix_case
     -- all the parameters from the main theorem
     {pn : Label → Finset Pid}
@@ -1394,8 +1438,8 @@ private lemma prefix_case
   (
     ∃ (q : Pid) (t₁' t₂' : List Label) (m₁ m₂ : Label),
       (
-        t₁' ++ [m₁] <+: t₁
-        ∧ t₂' ++ [m₂] <+: t₂
+        t₁' ++ [m₁] <+: t₁ ++ [l₁]
+        ∧ t₂' ++ [m₂] <+: t₂ ++ [l₂]
         ∧ B.matching m₁ m₂
         ∧ ProjectTrace (pn := pn) t₁' q = ProjectTrace (pn := pn) t₂' q
       )
@@ -1432,8 +1476,8 @@ private lemma prefix_case
         obtain ⟨s₀', ht₀', hrest⟩ := LTS.MTr.split hmtr
         rw [mtr_det h.d ht₀' ht₀] at hrest
         exact hrest
-      -- from commute_or_match:
-      rcases commute_or_match h s₀ s₁' s₂' ([x₁] ++ t₁') ([x₂] ++ t₂') ht₁' ht₂' with h1 | h2
+      -- from commute_or_matcheq:
+      rcases commute_or_matcheq h s₀ s₁' s₂' ([x₁] ++ t₁') ([x₂] ++ t₂') ht₁' ht₂' with h1 | h2
       · -- 1) x₁ ++ t₁' and x₂ ++ t₂' fully commute
         -- then at least one of their projections on p must be empty
         have hempty : ProjectTrace (pn := pn) ([x₁] ++ t₁') p = []
@@ -1471,13 +1515,31 @@ private lemma prefix_case
           rw [h₁, h₂, List.append_assoc, List.append_assoc, hL, hR]
           exact List.prefix_append _ _
       -- 2) the two find a match or equality at some point
-      obtain ⟨u₁, u₂, a, b, v₁, v₂, _, _, hmoreq, _, _, _⟩ := h2
+      obtain ⟨u₁, u₂, a, b, v₁, v₂, hs₁, hs₂, hmoreq, hcross, hleft, hright⟩ := h2
       rcases hmoreq with hm | heq
       · -- a match provides a witness
-        sorry
+        -- split the suffix decomposition at the matching labels
+        have hsplit₁ : t₁ ++ [l₁] = (t₀ ++ u₁) ++ a :: v₁ := by
+          rw [h₁, List.append_assoc, hs₁, ← List.append_assoc]
+        have hsplit₂ : t₂ ++ [l₂] = (t₀ ++ u₂) ++ b :: v₂ := by
+          rw [h₂, List.append_assoc, hs₂, ← List.append_assoc]
+        -- a process observing the matching labels observes neither prefix
+        obtain ⟨q, hq⟩ := hpn₀ a
+        have hqb : q ∈ pn b := (hpn₂ a b hm) ▸ hq
+        have hu₁nil : ProjectTrace (pn := pn) u₁ q = [] :=
+          projectTrace_eq_nil fun x hx hqx =>
+            Finset.disjoint_left.mp (hpn₁ x b (hright x hx)) hqx hqb
+        have hu₂nil : ProjectTrace (pn := pn) u₂ q = [] :=
+          projectTrace_eq_nil fun y hy hqy =>
+            Finset.disjoint_left.mp (hpn₁ a y (hleft y hy)) hq hqy
+        refine Or.inr (Or.inr ⟨q, t₀ ++ u₁, t₀ ++ u₂, a, b, ?_, ?_, hm, ?_⟩)
+        · rw [hsplit₁]
+          exact (List.prefix_append_right_inj (t₀ ++ u₁)).mpr (List.prefix_append [a] v₁)
+        · rw [hsplit₂]
+          exact (List.prefix_append_right_inj (t₀ ++ u₂)).mpr (List.prefix_append [b] v₂)
+        · rw [projectTrace_append, projectTrace_append, hu₁nil, hu₂nil, List.append_nil]
       -- otherwise, they encountered an equality
-      -- in case of an equality, the two p-labels can commute back until t₀
-      -- repeat commute_or_match by induction
+      -- ...?
       sorry
     · -- p ∉ pn l₁
       -- then projection of t₁ trivially prefixes that of t₂
