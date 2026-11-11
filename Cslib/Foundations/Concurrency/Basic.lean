@@ -1,5 +1,5 @@
 import Cslib.Computability.Languages.Basic
-import Mathlib.Computability.Language
+-- import Mathlib.Computability.Language
 
 /-! Luc's playground
   With initial help from ChatGPT and later DeepSeek-V4.1-Flash-1017.
@@ -93,7 +93,7 @@ def mul (u v : Trace I) : Trace I :=
     u
     v
 
-def toLanguage (u : Trace I) : Language α :=
+def toLanguage (u : Trace I) : Set (List α) :=
   Quotient.lift
     (fun a => { w : List α | List.PermUpTo I w a})
     (by
@@ -111,16 +111,16 @@ namespace TraceLanguage
 
 variable {α : Type*} {I : α → α → Prop} [Independence I]
 
-def mk (I : α → α → Prop) [Independence I] (l : Language α) : TraceLanguage I :=
+def mk (I : α → α → Prop) [Independence I] (l : Set (List α)) : TraceLanguage I :=
   { t | ∃ w ∈ l, t = Trace.mk I w}
 
-def toLanguage (T : TraceLanguage I) : Language α :=
+def toLanguage (T : TraceLanguage I) : Set (List α) :=
   { w | ∃ t ∈ T, w ∈ Trace.toLanguage t }
 
 end TraceLanguage
 
 -- A representative of B if B is a subset of the prefix trace closure of A
-def Representative {α : Type*} (I : α → α → Prop) [Independence I] (A B : Language α) :=
+def IsRepresentative {α : Type*} (I : α → α → Prop) [Independence I] (A B : Set (List α)) :=
   ∀ w ∈ B, ∃ v, ∃ u ∈ A, List.PermUpTo I (w ++ v) u
 
 end Cslib.Concurrency
