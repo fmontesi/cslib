@@ -98,6 +98,7 @@ private lemma lin_copy_trace_condprefix
         sorry
       -- obtain matching trace v for w'
       obtain ⟨v, s₁', _, _, hpref⟩ := ih w'.length (by grind) w' sw' hsw' rfl
+      -- looks like this might get tricky. perhaps include the second step already in the ih: there exists a suffix `u` of `w' ++ [x]` s.t. `w' ++ [x] ++ u PermUpTo v`; gives something more to work with
       sorry
 
 end Helpers
