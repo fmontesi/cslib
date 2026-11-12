@@ -51,6 +51,18 @@ variable {Pid : Type*} [DecidableEq Pid]
 def ProjectTrace {pn : Label → Finset Pid} (lst : List Label) (p : Pid) : List Label :=
   lst.filter (fun l => decide (p ∈ pn l))
 
+/-- Split a trace at its last step; the prefix still starts at the original state. -/
+lemma mtr_split_last
+    {s s' : State}
+    {l : List Label}
+    {a : Label}
+    {lts : LTS State Label}
+    (h : lts.MTr s (l ++ [a]) s')
+  : ∃ sm, lts.MTr s l sm ∧ lts.Tr sm a s'
+  := by
+    obtain ⟨sm, h1, h2⟩ := LTS.MTr.split h
+    exact ⟨sm, h1, LTS.MTr.single_invert lts _ _ _ h2⟩
+
 section Helpers
 
 variable {pn : Label → Finset Pid} {lts : LTS State Label}
@@ -74,14 +86,6 @@ omit [DecidableEq Pid] in
 /-- `B.matching` is symmetric. -/
 private lemma matching_comm {a b : Label} (h : B.matching a b) : B.matching b a :=
   Std.Symm.symm (r := B.matching) (a := a) (b := b) h
-
-
-/-- Split a trace at its last step; the prefix still starts at the original state. -/
-private lemma mtr_split_last {s s' : State} {l : List Label} {a : Label}
-    (h : lts.MTr s (l ++ [a]) s') : ∃ sm, lts.MTr s l sm ∧ lts.Tr sm a s' := by
-  obtain ⟨sm, h1, h2⟩ := LTS.MTr.split h
-  exact ⟨sm, h1, LTS.MTr.single_invert lts _ _ _ h2⟩
-
 
 /-! ### Trace equivalence
 
