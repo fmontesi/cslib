@@ -60,11 +60,11 @@ private lemma orig_sim_lin
 
 -- trace `v` is a `conditional prefix` of `w` if, for every process `p`,
 -- `w` contains the same conditionals in the same order
-def CondPrefix {pn : Label → Finset Pid} [DecidablePred B.conditional]
-    (v w : List Label) : Prop :=
-  ∀ (p : Pid), ∃ (w' : List Label), w' <+: w ∧
-    v.filter (fun l => decide (p ∈ pn l ∧ B.conditional l)) =
-      w'.filter (fun l => decide (p ∈ pn l ∧ B.conditional l))
+-- def CondPrefix {pn : Label → Finset Pid} [DecidablePred B.conditional]
+--     (v w : List Label) : Prop :=
+--   ∀ (p : Pid), ∃ (w' : List Label), w' <+: w ∧
+--     v.filter (fun l => decide (p ∈ pn l ∧ B.conditional l)) =
+--       w'.filter (fun l => decide (p ∈ pn l ∧ B.conditional l))
 
 -- if `Smurf` `lts₂` contains a trace `w`, then its linearisation `lts₁` contains a trace `v` s.t.
 -- all symbols in `w` occur in equal or greater amounts in `v`; and
@@ -79,26 +79,25 @@ private lemma lin_copy_trace_condprefix
     (s₁ s₂ : State)
     (φ : State → State)
   : IsLinearisation (B := B) (I := I) lts₁ lts₂ s₁ s₂ φ → ∀ w s₂', lts₂.MTr s₂ w s₂' →
-      ∃ v s₁', (lts₁.MTr s₁ v s₁' ∧ s₂ = φ s₁ ∧ CondPrefix (B := B) (pn := pn) w v ∧
-        ∀ x ∈ w, (v.count x) ≥ (w.count x))
+      ∃ v s₁', (lts₁.MTr s₁ v s₁' ∧ s₂ = φ s₁ ∧
+      -- CondPrefix (B := B) (pn := pn) w v ∧
+        ∀ p, ProjectTrace (pn := pn) w p <+: ProjectTrace (pn := pn) v p)
   := by
     intro ⟨hlinear, hinit, hmap, hterm, hcycle⟩ w s₂' hw
     induction hn : w.length using Nat.strong_induction_on generalizing w s₂' with
     | _ n ih =>
       rcases List.eq_nil_or_concat w with rfl | ⟨w', x, heq⟩
       · -- if w is empty, then witness [], s₁
-        refine ⟨[], s₁, ?_, ?_, ?_, ?_⟩
+        refine ⟨[], s₁, ?_, ?_, ?_⟩
         · simp only [LTS.MTr.nil_iff]
         · grind only
-        · simp [CondPrefix]
-        · simp
+        · intro p
+          simp
       -- else, apply induction hypothesis on w' ++ x
       have ⟨sw', hsw'⟩ : ∃ sw', lts₂.MTr s₂ w' sw' := by
         sorry
       -- obtain matching trace v for w'
-      obtain ⟨v, s₁', _, hmap₁, hcp, _⟩ := ih w'.length (by grind) w' sw' hsw' rfl
-      -- this seems tricky when x has to be added to v; if it's a conditional then it requires reworking v if v contains the matching one
-      -- perhaps easier to reconsider the induction hypothesis or general proof technique
+      obtain ⟨v, s₁', _, _, hpref⟩ := ih w'.length (by grind) w' sw' hsw' rfl
       sorry
 
 end Helpers
