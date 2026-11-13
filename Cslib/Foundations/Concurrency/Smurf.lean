@@ -13,12 +13,14 @@ namespace Cslib.Concurrency
 def SaneAlphabet (_ : Type*) : Prop :=
   true
 
--- identify conditionals and matching sets of labels within an alphabet
+-- identify conditionals and matching sets of conditionals within an alphabet
 structure Branching (α : Type*) where
   conditional : α → Prop
   matching : α → α → Prop
   [symm : Std.Symm matching]
   [irrefl : Std.Irrefl matching]
+  [functional : ∀ a b c, matching a b → matching a c → b = c]
+  [matchcond : ∀ a b, matching a b → conditional a ∧ conditional b]
 
 attribute [instance] Branching.symm
 
