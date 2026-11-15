@@ -31,6 +31,8 @@ From position `p` the run halts after `p + 1` steps, or after `2` steps if `p = 
 
 * `Turing.MultiTapeTM.rewindInput`: the machine that rewinds the input head.
 * `Turing.MultiTapeTM.runFrom_rewindInput`: its run from the initial state.
+* `Turing.MultiTapeTM.exists_runPath_rewindInput`: its run path inside a machine with `k` work
+  tapes, started on any configuration.
 -/
 
 namespace Turing.MultiTapeTM
@@ -104,5 +106,25 @@ public theorem runFrom_rewindInput (p : Fin (input.length + 2))
   rw [runFrom, Function.iterate_succ_apply, Rewind.step_eq rfl, ← runFrom, ← h]
   simp only [rewindInput, tr_ofTr]
   exact Rewind.runFrom_walk (moveInputPos p .neg) (by omega)
+
+/-- **Rewinding the input inside a machine with `k` work tapes.** Started on any configuration, the
+rewinding machine halts after `p - 1 + 2` steps, where `p` is the position of the input head. The
+input head ends at position `1`; the work tapes, their heads and the output are unchanged, and
+each work tape costs one cell. -/
+public theorem exists_runPath_rewindInput {k : ℕ} {State : Type*}
+    (c : Cfg k Symbol State input) :
+    ∃ p : ((rewindInput Symbol).extendTapes (noTapes k)).RunPath input,
+      p.head = c.withState (some (rewindInput Symbol).q₀) ∧
+      p.last = ⟨none, 1, c.workTapes, c.workTapePos, c.output⟩ ∧
+      p.length = c.inputPos.val - 1 + 2 ∧ p.space ≤ k := by
+  let q := MultiTapeNTM.RunPath.ofDeterministic (rewindInput Symbol)
+    ⟨some (rewindInput Symbol).q₀, c.inputPos, nofun, nofun, c.output⟩ (c.inputPos.val - 1 + 2)
+  have hq : q.last = ⟨none, 1, nofun, nofun, c.output⟩ :=
+    runFrom_rewindInput c.inputPos nofun nofun c.output
+  refine ⟨q.map (embedHom (rewindInput Symbol) (noTapes k) c.workTapes c.workTapePos),
+    by rw [RelSeries.head_map, embedHom_apply, embed_noTapes]; rfl,
+    by simp [hq, embed_noTapes], rfl, ?_⟩
+  simpa [MultiTapeNTM.RunPath.space] using
+    space_map_embedHom_le (rewindInput Symbol) (noTapes k) c.workTapes c.workTapePos q
 
 end Turing.MultiTapeTM

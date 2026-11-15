@@ -46,24 +46,29 @@ variable {tm₀ : MultiTapeTM k Symbol State₀} {tm₁ : MultiTapeTM k Symbol S
 
 /-- **Sequential composition of runs.** A run path of `tm₀` to a halted configuration and a run path
 of `tm₁` started where `tm₀` halted combine into a run path of `seq`: the first path up to its first
-halted configuration, followed by the second. It takes at most as many steps as the two paths
-together, and visits only cells that they visit. -/
+halted configuration, followed by the second. Time and space are bounded by the sums of the
+component bounds, and the composed path visits only cells that they visit. -/
 theorem exists_runPath_seq {p₀ : tm₀.RunPath input} (h₀ : p₀.last.Halted)
     {p₁ : tm₁.RunPath input} (h₁ : p₁.head = p₀.last.withState (some tm₁.q₀)) :
     ∃ p : (tm₀.seq tm₁).RunPath input, p.head = p₀.head.mapState (handOver tm₁.q₀) ∧
       p.last = p₁.last.mapState (Option.map .inr) ∧ p.length ≤ p₀.length + p₁.length ∧
+      p.space ≤ p₀.space + p₁.space ∧
       ∀ i, p.visitedByTapeHead i ⊆ p₀.visitedByTapeHead i ∪ p₁.visitedByTapeHead i := by
   -- `seq` takes the running steps of `tm₀`, then the steps of `tm₁`
   obtain ⟨q₀, hh₀, hl₀, hlen₀, hmem₀⟩ := p₀.exists_running h₀
-  refine ⟨(q₀.map (combineLeftHom (handOver_some _))).smash (p₁.map combineRightHom)
-    (by simp [hl₀, h₁, Cfg.mapState, Cfg.withState, show p₀.last.state = none from h₀]),
-    by simp [hh₀], by simp, by simp; lia,
-    fun i z hz => ?_⟩
-  obtain ⟨c, hc, rfl⟩ := (MultiTapeNTM.RunPath.mem_visitedByTapeHead _).mp hz
-  rcases RelSeries.mem_or_mem_of_mem_smash hc with hc | hc <;>
-    obtain ⟨c', hc', rfl⟩ := RelSeries.exists_of_mem_map hc
-  · exact Finset.mem_union_left _ (p₀.mem_visitedByTapeHead.mpr ⟨c', hmem₀ c' hc', rfl⟩)
-  · exact Finset.mem_union_right _ (p₁.mem_visitedByTapeHead.mpr ⟨c', hc', rfl⟩)
+  let p : (tm₀.seq tm₁).RunPath input :=
+    (q₀.map (combineLeftHom (handOver_some _))).smash (p₁.map combineRightHom)
+    (by simp [hl₀, h₁, Cfg.mapState, Cfg.withState, show p₀.last.state = none from h₀])
+  have hv : ∀ i, p.visitedByTapeHead i ⊆ p₀.visitedByTapeHead i ∪ p₁.visitedByTapeHead i := by
+    intro i z hz
+    obtain ⟨c, hc, rfl⟩ := p.mem_visitedByTapeHead.mp hz
+    rcases RelSeries.mem_or_mem_of_mem_smash hc with hc | hc <;>
+      obtain ⟨c', hc', rfl⟩ := RelSeries.exists_of_mem_map hc
+    · exact Finset.mem_union_left _ (p₀.mem_visitedByTapeHead.mpr ⟨c', hmem₀ c' hc', rfl⟩)
+    · exact Finset.mem_union_right _ (p₁.mem_visitedByTapeHead.mpr ⟨c', hc', rfl⟩)
+  exact ⟨p, by simp [p, hh₀], by simp [p], by simp [p]; lia,
+    (Finset.sum_le_sum fun i _ => (Finset.card_le_card (hv i)).trans
+      (Finset.card_union_le _ _)).trans_eq Finset.sum_add_distrib, hv⟩
 
 /-- **Sequential composition of transformations.** If the postcondition of the first
 transformation implies the precondition of the second, the composed machine performs the two
@@ -84,12 +89,10 @@ theorem transformsTapes_seq
   obtain ⟨ws', e₀, hQ₀, p₀, hh₀, hl₀, ht₀, hs₀⟩ := h₀ input ws out hP₀
   obtain ⟨ws'', e₁, hQ₁, p₁, hh₁, hl₁, ht₁, hs₁⟩ :=
     h₁ input ws' (out ++ e₀) (hmid input ws ws' e₀ hP₀ hQ₀)
-  obtain ⟨p, hh, hl, ht, hvisited⟩ := exists_runPath_seq (p₀ := p₀) (p₁ := p₁)
+  obtain ⟨p, hh, hl, ht, hs, _⟩ := exists_runPath_seq (p₀ := p₀) (p₁ := p₁)
     (by rw [hl₀]; rfl) (by simp [hh₁, hl₀])
-  -- the composed run visits only cells that one of the two runs visits
   exact ⟨ws'', e₀ ++ e₁, ⟨ws', e₀, e₁, hQ₀, hQ₁, rfl⟩, p, by simp [hh, hh₀]; rfl,
     by simp [hl, hl₁], ht.trans (Nat.add_le_add ht₀ ht₁),
-    ((Finset.sum_le_sum fun i _ => (Finset.card_le_card (hvisited i)).trans
-      (Finset.card_union_le _ _)).trans_eq Finset.sum_add_distrib).trans (Nat.add_le_add hs₀ hs₁)⟩
+    hs.trans (Nat.add_le_add hs₀ hs₁)⟩
 
 end Turing.MultiTapeTM

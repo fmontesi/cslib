@@ -35,6 +35,8 @@ maps to a run path of the larger machine.
 ## Main results
 
 * `Turing.MultiTapeTM.space_map_embedHom_le`: the space bound for a mapped path.
+* `Turing.MultiTapeTM.exists_runPath_extendTapes`: a computation of `tm`, run inside the
+  machine with extended tapes.
 * `Turing.MultiTapeTM.oneTapeCfg`: the one-tape view of a configuration.
 * `Turing.MultiTapeTM.runFrom_tapeEmb`: the run of a one-tape machine placed on work tape `i`.
 * `Turing.MultiTapeTM.TransformsTapes.tapeEmb`: a one-tape specification, read on tape `i`.
@@ -76,7 +78,8 @@ public lemma extendTapes_q₀ (tm : MultiTapeTM k Symbol State) (e : Fin k ↪ F
 
 /-- A configuration of `tm`, embedded: tape `j` goes to tape `e j`, the tapes outside `range e`
 carry the given `extraTapes` contents and `extraPos` head positions. -/
-@[expose] public def embed (e : Fin k ↪ Fin k') (cfg : Cfg k Symbol State input)
+@[expose, simps state inputPos output]
+public def embed (e : Fin k ↪ Fin k') (cfg : Cfg k Symbol State input)
     (extraTapes : Fin k' → ℤ → Option Symbol) (extraPos : Fin k' → ℤ) :
     Cfg k' Symbol State input :=
   ⟨cfg.state, cfg.inputPos,
@@ -94,11 +97,13 @@ public lemma partialInv_embed (e : Fin k ↪ Fin k') (j : Fin k) : partialInv e 
   (partialInv_isPartialInv e).eq j
 
 /-- Outside the range of `e`, the partial inverse is undefined. -/
+@[simp]
 public lemma partialInv_eq_none (e : Fin k ↪ Fin k') {l : Fin k'} (hl : l ∉ Set.range e) :
     partialInv e l = none :=
   dite_eq_right hl
 
 /-- If the partial inverse is `some j`, then `e j = l`. -/
+@[scoped grind →]
 public lemma partialInv_eq_some (e : Fin k ↪ Fin k') {l : Fin k'} {j : Fin k}
     (h : partialInv e l = some j) : e j = l :=
   (partialInv_isPartialInv e j l).mp h
@@ -120,6 +125,31 @@ public lemma embed_workTapeSymbols_embed (e : Fin k ↪ Fin k') (cfg : Cfg k Sym
     (extraTapes : Fin k' → ℤ → Option Symbol) (extraPos : Fin k' → ℤ) (j : Fin k) :
     (embed e cfg extraTapes extraPos).workTapeSymbols (e j) = cfg.workTapeSymbols j := by
   simp [Cfg.workTapeSymbols]
+
+/-- Outside the range of `e`, an embedded configuration carries the extra tape contents. -/
+@[simp]
+public lemma embed_workTapes_of_notMem_range (e : Fin k ↪ Fin k')
+    (cfg : Cfg k Symbol State input) (extraTapes : Fin k' → ℤ → Option Symbol)
+    (extraPos : Fin k' → ℤ) {l : Fin k'} (hl : l ∉ Set.range e) :
+    (embed e cfg extraTapes extraPos).workTapes l = extraTapes l := by
+  simp [embed, hl]
+
+/-- Outside the range of `e`, an embedded configuration carries the extra head positions. -/
+@[simp]
+public lemma embed_workTapePos_of_notMem_range (e : Fin k ↪ Fin k')
+    (cfg : Cfg k Symbol State input) (extraTapes : Fin k' → ℤ → Option Symbol)
+    (extraPos : Fin k' → ℤ) {l : Fin k'} (hl : l ∉ Set.range e) :
+    (embed e cfg extraTapes extraPos).workTapePos l = extraPos l := by
+  simp [embed, hl]
+
+/-- Embedding a configuration into tapes and heads that already agree with it on the range of `e`
+only sets the state, the input head and the output. -/
+public lemma embed_eq_of_forall_embed (e : Fin k ↪ Fin k') (cfg : Cfg k Symbol State input)
+    {tapes : Fin k' → ℤ → Option Symbol} {heads : Fin k' → ℤ}
+    (htapes : ∀ j, tapes (e j) = cfg.workTapes j) (hheads : ∀ j, heads (e j) = cfg.workTapePos j) :
+    embed e cfg tapes heads = ⟨cfg.state, cfg.inputPos, tapes, heads, cfg.output⟩ := by
+  refine Cfg.ext rfl rfl ?_ ?_ rfl <;> funext l <;> simp only [embed] <;>
+    cases h : partialInv e l <;> grind
 
 /-- `embed` as a homomorphism of step relations: each step `c → c'` of `tm` becomes the step
 `embed c → embed c'` of the reindexed machine, so a run path of `tm` maps to a run path of the
@@ -143,7 +173,23 @@ public lemma space_map_embedHom_le (tm : MultiTapeTM k Symbol State) (e : Fin k 
     (p.map (embedHom tm e extraTapes extraPos)).space ≤ p.space + (k' - k) := by
   simpa [Finset.card_compl] using p.space_map_le _ e (fun l => {extraPos l})
     (fun c _ => embed_workTapePos_embed e c extraTapes extraPos)
-    fun c _ l hl => by simp [embed, partialInv_eq_none e hl]
+    fun c _ l hl => by simp [hl]
+
+/-- **Running a computation inside a larger machine.** A run path of `tm` from its initial
+configuration is also a run path of `tm.extendTapes e`, provided the tapes in the range of `e` start
+blank with their heads at `0`. The other tapes may hold anything and are left unchanged, and any
+word `pre` may already be on the output. -/
+public theorem exists_runPath_extendTapes {tm : MultiTapeTM k Symbol State} (e : Fin k ↪ Fin k')
+    {p : tm.RunPath input} (hh : p.head = tm.initCfg input) (pre : List Symbol)
+    {tapes : Fin k' → ℤ → Option Symbol} {heads : Fin k' → ℤ}
+    (htapes : ∀ j, tapes (e j) = fun _ => none) (hheads : ∀ j, heads (e j) = 0) :
+    ∃ q : (tm.extendTapes e).RunPath input, q.head = ⟨some tm.q₀, 1, tapes, heads, pre⟩ ∧
+      q.last = embed e (p.last.prependOutput pre) tapes heads ∧ q.length = p.length ∧
+      q.space ≤ p.space + (k' - k) :=
+  ⟨(p.map (tm.prependOutputHom pre)).map (embedHom tm e tapes heads),
+    by simpa [hh, Cfg.prependOutput] using
+      embed_eq_of_forall_embed e ((tm.initCfg input).prependOutput pre) htapes hheads,
+    rfl, rfl, space_map_embedHom_le ..⟩
 
 end Space
 
@@ -188,10 +234,10 @@ tape `i`, with everything else as it is. -/
   ⟨cfg.state, cfg.inputPos, fun _ => cfg.workTapes i, fun _ => cfg.workTapePos i, cfg.output⟩
 
 /-- A configuration is its own one-tape view on tape `i`, placed back on tape `i`. -/
+@[simp]
 public lemma embed_oneTapeCfg (i : Fin k) (cfg : Cfg k Symbol State input) :
-    embed (tapeEmb i) (oneTapeCfg i cfg) cfg.workTapes cfg.workTapePos = cfg := by
-  rw [embed_tapeEmb]
-  simp [oneTapeCfg]
+    embed (tapeEmb i) (oneTapeCfg i cfg) cfg.workTapes cfg.workTapePos = cfg :=
+  embed_eq_of_forall_embed _ _ (fun _ => rfl) fun _ => rfl
 
 /-- **Running a one-tape machine on work tape `i`.** The run is the run on the one-tape view of the
 configuration, placed back on tape `i`; every other tape and head keeps its starting value. Combine
@@ -237,11 +283,6 @@ variable {k : ℕ}
 /-- The embedding of a machine without work tapes into a machine with `k` of them. -/
 @[expose] public def noTapes (k : ℕ) : Fin 0 ↪ Fin k := ⟨Fin.elim0, fun a => a.elim0⟩
 
-/-- No tape is in the range of `noTapes`. -/
-@[simp]
-public lemma partialInv_noTapes (l : Fin k) : partialInv (noTapes k) l = none :=
-  partialInv_eq_none _ (by simp)
-
 /-- The view of a configuration as a configuration of a machine without work tapes. -/
 @[expose] public def noTapesCfg (cfg : Cfg k Symbol State input) : Cfg 0 Symbol State input :=
   ⟨cfg.state, cfg.inputPos, nofun, nofun, cfg.output⟩
@@ -250,14 +291,14 @@ public lemma partialInv_noTapes (l : Fin k) : partialInv (noTapes k) l = none :=
 state, its input head and its output. -/
 public lemma embed_noTapes (cfg : Cfg 0 Symbol State input)
     (tapes : Fin k → ℤ → Option Symbol) (heads : Fin k → ℤ) :
-    embed (noTapes k) cfg tapes heads = ⟨cfg.state, cfg.inputPos, tapes, heads, cfg.output⟩ := by
-  refine Cfg.ext rfl rfl ?_ ?_ rfl <;> funext l <;> simp [embed]
+    embed (noTapes k) cfg tapes heads = ⟨cfg.state, cfg.inputPos, tapes, heads, cfg.output⟩ :=
+  embed_eq_of_forall_embed _ cfg nofun nofun
 
 /-- A configuration is its tapeless view, placed back on its tapes. -/
+@[simp]
 public lemma embed_noTapesCfg (cfg : Cfg k Symbol State input) :
-    embed (noTapes k) (noTapesCfg cfg) cfg.workTapes cfg.workTapePos = cfg := by
-  rw [embed_noTapes]
-  rfl
+    embed (noTapes k) (noTapesCfg cfg) cfg.workTapes cfg.workTapePos = cfg :=
+  embed_eq_of_forall_embed _ _ nofun nofun
 
 /-- **Running a machine without work tapes inside a machine with `k` of them.** Only the state, the
 input head and the output change; every work tape and work head keeps its starting value. -/

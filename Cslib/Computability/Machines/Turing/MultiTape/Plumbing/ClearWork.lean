@@ -63,7 +63,7 @@ public theorem transformsTapes_clearWork (w : List Symbol) :
       Cfg 1 Symbol RewindWorkState input) (w.length + 2)
   have h₀ : p₀.last = _ := runFrom_forwardWork (input := input) 1 w out (zero_add _)
   have h₁ : p₁.last = _ := runFrom_rewindWork_erase (input := input) 1 (tapeOfList w) out rfl
-  obtain ⟨p, hh, hl, ht, hvisited⟩ := exists_runPath_seq (p₀ := p₀) (p₁ := p₁) (by rw [h₀])
+  obtain ⟨p, hh, hl, ht, _, hvisited⟩ := exists_runPath_seq (p₀ := p₀) (p₁ := p₁) (by rw [h₀])
     (by rw [h₀]; rfl)
   refine ⟨fun _ => [], [], ⟨rfl, rfl⟩, p, hh,
     by rw [hl, h₁]; simp [Cfg.mapState, wordsCfg],

@@ -98,6 +98,7 @@ public import Cslib.Computability.Languages.SafetyLiveness
 public import Cslib.Computability.Languages.Slice
 public import Cslib.Computability.Languages.SyntacticMonoid
 public import Cslib.Computability.Machines.Turing.MultiTape.Combinators.AlmostConstant
+public import Cslib.Computability.Machines.Turing.MultiTape.Combinators.Concatenate
 public import Cslib.Computability.Machines.Turing.MultiTape.Combinators.Id
 public import Cslib.Computability.Machines.Turing.MultiTape.ConfigBound
 public import Cslib.Computability.Machines.Turing.MultiTape.Configuration

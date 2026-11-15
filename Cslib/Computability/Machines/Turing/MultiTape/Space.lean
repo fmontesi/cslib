@@ -187,6 +187,13 @@ lemma RunsInSpace.exists_space_max {s : ℕ} (hs : ntm.RunsInSpace input s) :
   obtain ⟨p, hp⟩ := Nat.sSup_mem hne hbdd
   exact ⟨p, fun q => (le_csSup hbdd ⟨q, rfl⟩).trans_eq hp.symm⟩
 
+/-- A space bound is at least the number of work tapes, since the initial configuration
+visits one cell on each tape. -/
+lemma RunsInSpace.numTapes_le {s : ℕ} (h : ntm.RunsInSpace input s) : k ≤ s := by
+  have hs := h ⟨RelSeries.singleton _ (ntm.initCfg input), rfl⟩
+  change (∑ _ : Fin k, ((Finset.univ : Finset (Fin 1)).image fun _ => (0 : ℤ)).card) ≤ s at hs
+  simpa using hs
+
 /-- A machine without work tapes satisfies every space bound. -/
 @[simp]
 lemma runsInSpace_zero_tapes (ntm : MultiTapeNTM 0 Symbol State) (input : List Symbol) (s : ℕ) :
