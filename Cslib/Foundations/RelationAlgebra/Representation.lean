@@ -76,6 +76,13 @@ structure Representation (α : Type u) [RelationAlgebra α] (ι : Type v) (β : 
 def Representable (α : Type u) [RelationAlgebra α] : Prop :=
   ∃ (ι : Type u) (β : ι → Type u), Nonempty (Representation α ι β)
 
+/-- A relation algebra that embeds into a representable relation algebra is representable. -/
+theorem Representable.of_injective {α α' : Type u} [RelationAlgebra α] [RelationAlgebra α']
+    (f : RelationAlgebraHom α α') (hf : Function.Injective f) (h : Representable α') :
+    Representable α :=
+  let ⟨ι, β, ⟨r⟩⟩ := h
+  ⟨ι, β, ⟨⟨r.hom.comp f, r.injective.comp hf⟩⟩⟩
+
 /-- A `Representation α ι β` in arbitrary universes can be contracted to the universe of `α`. -/
 proof_wanted representable_univ {α : Type u} [RelationAlgebra α] {ι : Type v} {β : ι → Type w} :
     Representation α ι β → Representable α

@@ -75,6 +75,14 @@ theorem id_apply (a : α) : RelationAlgebraHom.id α a = a := rfl
 theorem comp_apply (f : RelationAlgebraHom β γ) (g : RelationAlgebraHom α β) (a : α) :
     f.comp g a = f (g a) := rfl
 
+theorem isIntegral_of_injective (f : RelationAlgebraHom α β) (hf : Function.Injective f)
+    (h : RelationAlgebra.IsIntegral β) : RelationAlgebra.IsIntegral α := by
+  refine ⟨fun h1 => IsAtom.ne_bot h ?_, fun b hb => hf ?_⟩
+  · rw [← map_one f, h1, map_bot]
+  · have hlt : f b < 1 := map_one f ▸ (OrderHomClass.mono f).strictMono_of_injective hf hb
+    rw [map_bot]
+    exact h.2 _ hlt
+
 end RelationAlgebraHom
 
 namespace RelationAlgebraEquiv
