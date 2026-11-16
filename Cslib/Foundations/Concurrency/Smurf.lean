@@ -1,11 +1,21 @@
-import Cslib.Foundations.Semantics.LTS.Bisimulation
-import Cslib.Foundations.Concurrency.Basic
+/-
+Copyright (c) 2026 Luc. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Luc
+-/
+
+module
+
+public import Cslib.Foundations.Semantics.LTS.Bisimulation
+public import Cslib.Foundations.Concurrency.Basic
 import Cslib.Foundations.Relation.Confluence
 import Mathlib.Data.List.Basic
 
 /-! Luc's playground
   With help from DeepSeek-V4.1-Flash-1017.
 -/
+
+@[expose] public section
 
 namespace Cslib.Concurrency
 
@@ -117,7 +127,7 @@ private lemma mtr_swap_indep (h : Smurf lts I B) {a b : Label} (hab : I a b)
 omit [DecidableEq Pid] in
 /-- Executions are determined by their trace: `List.PermUpTo I`-equivalent label lists
 describe executions between the same two states. -/
-private lemma mtr_permUpTo (h : Smurf lts I B) {u v : List Label}
+lemma mtr_permUpTo (h : Smurf lts I B) {u v : List Label}
     (hp : List.PermUpTo I u v) :
     ∀ {s t : State}, lts.MTr s u t → lts.MTr s v t := by
   induction hp with
@@ -257,7 +267,7 @@ private lemma diamond_trace_label
 
 -- diamond extended to label and trace
 -- l commutes past t
-private lemma diamond_label_trace
+lemma diamond_label_trace
     {lts : LTS State Label}
     {I : Label → Label → Prop}
     [Independence I]
@@ -304,7 +314,7 @@ private lemma diamond_trace_trace
       exact ih s_b s_b' s₂ ht₁' ht₂' fun a ha c hc => hind a ha c (List.mem_cons_of_mem b hc)
 
 -- two lists whose elements are pairwise independent can be swapped
-private lemma permUpTo_append_comm {I : Label → Label → Prop} [Independence I] :
+lemma permUpTo_append_comm {I : Label → Label → Prop} [Independence I] :
     ∀ u v : List Label,
       (∀ a ∈ u, ∀ b ∈ v, I a b) → List.PermUpTo I (u ++ v) (v ++ u) := by
   intro u

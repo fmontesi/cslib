@@ -1,9 +1,18 @@
-import Cslib.Computability.Languages.Basic
--- import Mathlib.Computability.Language
+/-
+Copyright (c) 2026 Luc. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Luc
+-/
+
+module
+
+public import Cslib.Init
 
 /-! Luc's playground
   With initial help from ChatGPT and later DeepSeek-V4.1-Flash-1017.
 -/
+
+@[expose] public section
 
 namespace List
 
@@ -49,6 +58,14 @@ theorem append_right (u v w : List α) (h : PermUpTo r v w) :
   | cons a _ ih => exact .cons a ih
   | swap a b w h => exact .swap a b (w ++ u) h
   | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂
+
+/-- Permitted permutations preserve the number of labels. -/
+theorem length_eq {u v : List α} (h : PermUpTo r u v) : u.length = v.length := by
+  induction h with
+  | nil => rfl
+  | cons _ _ ih => exact congrArg Nat.succ ih
+  | swap => rfl
+  | trans _ _ ih₁ ih₂ => exact ih₁.trans ih₂
 
 end PermUpTo
 
