@@ -67,6 +67,7 @@ public import Cslib.Computability.Distributed.FLP.Impossibility
 public import Cslib.Computability.Distributed.FLP.OnePseudoConsensus
 public import Cslib.Computability.Distributed.FLP.PseudoConsensus
 public import Cslib.Computability.Distributed.FLP.ZeroConsensus
+public import Cslib.Computability.Languages.Basic
 public import Cslib.Computability.Languages.Congruences.Basic
 public import Cslib.Computability.Languages.Congruences.BuchiCongruence
 public import Cslib.Computability.Languages.Congruences.MyhillCongruence
@@ -126,6 +127,12 @@ public import Cslib.Crypto.Protocols.SecretSharing.Scheme
 public import Cslib.Crypto.Protocols.SecretSharing.Shamir
 public import Cslib.Crypto.Protocols.SecretSharing.Shamir.Polynomial
 public import Cslib.Foundations.Combinatorics.InfiniteGraphRamsey
+public import Cslib.Foundations.Concurrency.Basic
+public import Cslib.Foundations.Concurrency.Linearisation
+public import Cslib.Foundations.Concurrency.RoundRobin.Basic
+public import Cslib.Foundations.Concurrency.RoundRobin.Queue
+public import Cslib.Foundations.Concurrency.RoundRobin.Scheduler
+public import Cslib.Foundations.Concurrency.Smurf
 public import Cslib.Foundations.Control.Monad.Free
 public import Cslib.Foundations.Control.Monad.Free.Effects
 public import Cslib.Foundations.Control.Monad.Free.Fold

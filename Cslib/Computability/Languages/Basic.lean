@@ -1,15 +1,29 @@
-import Mathlib.Computability.Language
--- import Mathlib.Order.Closure
--- import Mathlib.Order.Monotone
+/-
+Copyright (c) 2026 Luc Edixhoven. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Luc Edixhoven
+-/
 
--- All of this should probably go in Language.lean.
+module
+
+public import Cslib.Init
+public import Mathlib.Computability.Language
+
+/-!
+# Basic closure properties of languages
+
+Prefix closure and its order-theoretic properties, plus the subset instance on `Language α`.
+-/
+
+@[expose] public section
 
 namespace Language
 
--- apparently not defined in mathlib, seems very basic
-instance : HasSubset (Language α) :=
+/-- Subset of languages, which is not defined in Mathlib. -/
+instance instHasSubset (α : Type*) : HasSubset (Language α) :=
   ⟨(· ⊆ · : Set (List α) → Set (List α) → Prop)⟩
 
+/-- The prefix closure of a language: the words having a prefix in the language. -/
 def prefixClosure (l : Language α) : Language α :=
   { w | ∃ v, w ++ v ∈ l}
 

@@ -24,7 +24,7 @@ Luc's development, with help from DeepSeek-V4.1-Flash-1017 and Codex GPT-6 Astra
 
 namespace Cslib.Concurrency
 
-variable {State Label : Type*} {B : Branching Label} {I : Label → Label → Prop}
+variable {RState State Label : Type*} {B : Branching Label} {I : Label → Label → Prop}
   {Pid : Type*} [DecidableEq Pid]
 
 -- lts is linear
@@ -55,7 +55,8 @@ theorem isLinear_unique_of_not_conditional {lts : LTS State Label} (hlin : IsLin
 
 -- `lts₁` is a linearisation of `lts₂` from states `s₁/s₂` through mapping `φ`
 def IsLinearisation [Independence I]
-    (lts₁ lts₂ : LTS State Label) (s₁ s₂ : State) (φ : State → State) :=
+    (lts₁ : LTS RState Label) (lts₂ : LTS State Label) (s₁ : RState) (s₂ : State)
+    (φ : RState → State) :=
   -- `lts₁` is linear
   IsLinear (B := B) lts₁
   -- TODO: if lts₂ finite then lts₁ also finite?
@@ -75,7 +76,8 @@ def IsLinearisation [Independence I]
 
 section Helpers
 
-variable [Independence I] {R A : LTS State Label} {φ : State → State}
+variable [Independence I] {R : LTS RState Label} {A : LTS State Label}
+  {φ : RState → State}
 
 /-- An enabled action either commutes with the whole target, or meets an equal or matching
 label after a prefix independent of it.
@@ -147,7 +149,7 @@ private lemma matching_prefix_independent (h : Smurf A I B)
 private lemma consume_enabled (h : Smurf A I B)
     -- `A` is Smurf, `R`-transitions map onto `A`
     (hmap : ∀ q a q', R.Tr q a q' → A.Tr (φ q) a (φ q'))
-    {q q' t : State} {a : Label} {p r : List Label}
+    {q q' : RState} {t : State} {a : Label} {p r : List Label}
     -- `a` enabled in `R`, `p ++ a :: r` enabled in `A`, `a` independent of `p`
     (ha : R.Tr q a q') (hw : A.MTr (φ q) (p ++ a :: r) t)
     (hind : ∀ b ∈ p, I a b) :
@@ -177,7 +179,7 @@ private lemma wait_or_consume (h : Smurf A I B)
     (hmap : ∀ q a q', R.Tr q a q' → A.Tr (φ q) a (φ q'))
     (hterm : ∀ q, R.IsTerminal q → A.IsTerminal (φ q))
     -- `w` is a nonempty trace of `A`
-    {q : State} {w : List Label} (hne : w ≠ []) (hw : w ∈ A.traces (φ q)) :
+    {q : RState} {w : List Label} (hne : w ≠ []) (hw : w ∈ A.traces (φ q)) :
     -- then either `R` can take an independent transition, after which `w` remains enabled
     (∃ a q', R.Tr q a q' ∧ (∀ b ∈ w, I a b) ∧ w ∈ A.traces (φ q')) ∨
     -- or `R` can execute a label from `w`, after which the remainder of `w` remains enabled
@@ -219,7 +221,7 @@ private lemma wait_or_consume (h : Smurf A I B)
 
 /-- Waiting paths are finite: a repeated state would give a nonempty cycle independent of
 an enabled head of the target. Thus some finite waiting path ends in a consuming step. -/
-private lemma finite_progress [Finite State] (h : Smurf A I B)
+private lemma finite_progress [Finite RState] (h : Smurf A I B)
     -- `A` is Smurf, `R` is its linearisation
     (hno : ∀ a b, B.matching a b → ¬ I a b)
     (hlinear : IsLinear (B := B) R)
@@ -228,7 +230,7 @@ private lemma finite_progress [Finite State] (h : Smurf A I B)
     (hcycle : ∀ q d, d ≠ [] → R.MTr q d q →
       ∀ a s, A.Tr (φ q) a s → ∃ b ∈ d, ¬ I a b)
     -- `A` contains a non-empty trace `w`
-    {q : State} {w : List Label} (hne : w ≠ []) (hw : w ∈ A.traces (φ q)) :
+    {q : RState} {w : List Label} (hne : w ≠ []) (hw : w ∈ A.traces (φ q)) :
     -- then `R` has a trace `d ++ [a]`
     ∃ d a q' w', R.MTr q (d ++ [a]) q' ∧
       -- s.t. `d` is independent of `w`
@@ -239,11 +241,11 @@ private lemma finite_progress [Finite State] (h : Smurf A I B)
   -- nonempty waiting paths, not individual transitions, so transitivity is immediate.
   -- `q' q` is a waiting path if there is a non-empty trace `d` from `q` to `q'` that is
   -- independent of `w`
-  let waits : State → State → Prop := fun q' q =>
+  let waits : RState → RState → Prop := fun q' q =>
     ∃ d, d ≠ [] ∧ R.MTr q d q' ∧ (∀ c ∈ d, ∀ b ∈ w, I c b) ∧
       w ∈ A.traces (φ q)
   -- waiting paths are transitively closed
-  have : IsTrans State waits := ⟨by
+  have : IsTrans RState waits := ⟨by
     rintro x y z ⟨d, hd, hrun, hind, _⟩ ⟨e, he, hrun', hind', hw⟩
     refine ⟨e ++ d, ?_, LTS.MTr.comp R hrun' hrun, ?_, hw⟩
     · intro hnil
@@ -295,7 +297,7 @@ private lemma finite_progress [Finite State] (h : Smurf A I B)
 
 /-- Construct a representative by induction on the length of the executable residual target.
 Waiting labels become the extra suffix; each consuming step strictly shortens the target. -/
-private lemma lin_copy_trace [Finite State] (h : Smurf A I B)
+private lemma lin_copy_trace [Finite RState] (h : Smurf A I B)
     -- `A` is Smurf, `R` is its linearisation
     (hno : ∀ a b, B.matching a b → ¬ I a b)
     (hlinear : IsLinear (B := B) R)
@@ -339,29 +341,40 @@ private lemma lin_copy_trace [Finite State] (h : Smurf A I B)
 
 end Helpers
 
--- if lts₁ is a linearisation of lts₂, then the traces of lts₁ are representative of those of lts₂
--- note: requires both LTSs to be finite-state
+-- matching labels can never be independent, given the participation hypotheses
+omit [DecidableEq Pid] in
+theorem matching_not_independent
+    {pn : Label → Finset Pid}
+    (hpn₀ : ∀ l, (pn l).Nonempty)
+    (hpn₁ : ∀ l₁ l₂, I l₁ l₂ → Disjoint (pn l₁) (pn l₂))
+    (hpn₂ : ∀ l₁ l₂, B.matching l₁ l₂ → (pn l₁) = (pn l₂)) :
+    ∀ a b, B.matching a b → ¬ I a b := by
+  intro a b hm hi
+  -- matching labels participate in the same set of processes, while independent labels
+  -- participate in disjoint ones
+  obtain ⟨p, hp⟩ := hpn₀ a
+  have hp' : p ∈ pn b := (hpn₂ a b hm) ▸ hp
+  exact Finset.disjoint_left.mp (hpn₁ a b hi) hp hp'
+
+-- if `lts₁` is a linearisation of `lts₂`, then the traces of `lts₁` are representative of those
+-- of `lts₂`
+-- note: requires the linearising LTS to be finite-state; the original one need not be
 omit [DecidableEq Pid] in
 theorem linearisation_is_representative
     [Independence I]
-    [Finite State]
+    [Finite RState]
     {pn : Label → Finset Pid}
     {hpn₀ : ∀ l, (pn l).Nonempty}
     {hpn₁ : ∀ l₁ l₂, I l₁ l₂ → Disjoint (pn l₁) (pn l₂)}
     {hpn₂ : ∀ l₁ l₂, B.matching l₁ l₂ → (pn l₁) = (pn l₂)}
-    (lts₁ lts₂ : LTS State Label)
+    (lts₁ : LTS RState Label) (lts₂ : LTS State Label)
     (hsmurf : Smurf lts₂ I B)
-    (s₁ s₂ : State)
-    (φ : State → State)
+    (s₁ : RState) (s₂ : State) (φ : RState → State)
   : IsLinearisation (B := B) (I := I) lts₁ lts₂ s₁ s₂ φ →
     IsRepresentative I (lts₁.traces s₁) (lts₂.traces s₂)
   := by
     intro ⟨hlinear, hinit, hmap, hterm, hcycle⟩ w hw
-    have hno : ∀ a b, B.matching a b → ¬ I a b := by
-      intro a b hm hi
-      obtain ⟨p, hp⟩ := hpn₀ a
-      have hp' : p ∈ pn b := (hpn₂ a b hm) ▸ hp
-      exact Finset.disjoint_left.mp (hpn₁ a b hi) hp hp'
+    have hno := matching_not_independent hpn₀ hpn₁ hpn₂
     rw [← hinit] at hw
     obtain ⟨v, q, u, hv, hperm⟩ :=
       lin_copy_trace hsmurf hno hlinear hmap hterm hcycle s₁ w hw
