@@ -57,6 +57,68 @@ structure Smurf (lts : LTS State Label) (I : Label → Label → Prop) [Independ
   -- the LTS is deterministic
   d : ∀ s s₁ s₂ l, lts.Tr s l s₁ → lts.Tr s l s₂ → s₁ = s₂
 
+/-- `Smurf` is a `Prop`-valued structure, hence it is the conjunction of its six fields.  This
+characterisation exposes the fields to type class search, which cannot look inside a structure,
+and is what makes `Smurf.decidableSmurf` possible. -/
+theorem Smurf_iff {lts : LTS State Label} {I : Label → Label → Prop} [Independence I]
+    {B : Branching Label} :
+    Smurf lts I B ↔
+      SaneAlphabet Label ∧
+      (∀ s s₁ l₁, B.conditional l₁ ∧ lts.Tr s l₁ s₁ →
+        ∃ l₂ s₂, B.matching l₁ l₂ ∧ lts.Tr s l₂ s₂) ∧
+      (∀ s s₁ s₂ l₁ l₂, l₁ ≠ l₂ → lts.Tr s l₁ s₁ ∧ lts.Tr s l₂ s₂ →
+        I l₁ l₂ ∨ B.matching l₁ l₂) ∧
+      (∀ s s₁ l₁ l₂, I l₁ l₂ ∧ lts.MTr s [l₁, l₂] s₁ →
+        ∃ s₂, lts.Tr s l₂ s₂) ∧
+      (∀ s s₁ s₂ l₁ l₂, I l₁ l₂ ∧ lts.Tr s l₁ s₁ ∧ lts.Tr s l₂ s₂ →
+        ∃ s₃, lts.Tr s₁ l₂ s₃ ∧ lts.Tr s₂ l₁ s₃) ∧
+      (∀ s s₁ s₂ l, lts.Tr s l s₁ → lts.Tr s l s₂ → s₁ = s₂) := by
+  refine ⟨fun h => ⟨h.s, h.m, h.u, h.r, h.f, h.d⟩, ?_⟩
+  rintro ⟨s, m, u, r, f, d⟩
+  exact ⟨s, m, u, r, f, d⟩
+
+/-- `SaneAlphabet` is a `def` for `True`, but instance search does not unfold it. -/
+instance instDecidableSaneAlphabet : Decidable (SaneAlphabet Label) :=
+  decidable_of_iff True (by simp [SaneAlphabet])
+
+/-- Multistep transitions are decidable when states are finite and single steps are, since the
+intermediate states of the existential in `LTS.MTr.cons_iff` can be enumerated.  This is also
+useful beyond `Smurf`: it makes the fields about `LTS.MTr` decidable. -/
+instance decidableMTr {lts : LTS State Label} [Fintype State] [DecidableEq State]
+    [∀ (s : State) (l : Label) (s' : State), Decidable (lts.Tr s l s')] :
+    ∀ (u : List Label) (s t : State), Decidable (lts.MTr s u t) := by
+  intro u
+  induction u with
+  | nil =>
+    exact fun s t => decidable_of_iff (s = t) (LTS.MTr.nil_iff (lts := lts) s t).symm
+  | cons a u _ =>
+    exact fun s t =>
+      decidable_of_iff (∃ s', lts.Tr s a s' ∧ lts.MTr s' u t) LTS.MTr.cons_iff.symm
+
+/-- Membership in `Smurf` is decidable, provided states and labels are finite and the transition
+relation, `I`, `B.conditional`, and `B.matching` are decidable.
+
+The `haveI` binders keep each field's instance search small: asking for all six fields at once
+exceeds the default size limit of type class search, since the last fields need `DecidableEq` on
+states and `Decidable` multistep transitions in their local context.
+
+On a concrete system, `decide` then evaluates the membership question by computation. -/
+instance decidableSmurf {lts : LTS State Label} {I : Label → Label → Prop} [Independence I]
+    {B : Branching Label} [Fintype State] [DecidableEq State] [Fintype Label] [DecidableEq Label]
+    [∀ (s : State) (l : Label) (s' : State), Decidable (lts.Tr s l s')]
+    [DecidableRel I] [DecidablePred B.conditional] [DecidableRel B.matching] :
+    Decidable (Smurf lts I B) := by
+  haveI : Decidable (∀ s s₁ l₁, B.conditional l₁ ∧ lts.Tr s l₁ s₁ →
+      ∃ l₂ s₂, B.matching l₁ l₂ ∧ lts.Tr s l₂ s₂) := inferInstance
+  haveI : Decidable (∀ s s₁ s₂ l₁ l₂, l₁ ≠ l₂ → lts.Tr s l₁ s₁ ∧ lts.Tr s l₂ s₂ →
+      I l₁ l₂ ∨ B.matching l₁ l₂) := inferInstance
+  haveI : Decidable (∀ s s₁ l₁ l₂, I l₁ l₂ ∧ lts.MTr s [l₁, l₂] s₁ →
+      ∃ s₂, lts.Tr s l₂ s₂) := inferInstance
+  haveI : Decidable (∀ s s₁ s₂ l₁ l₂, I l₁ l₂ ∧ lts.Tr s l₁ s₁ ∧ lts.Tr s l₂ s₂ →
+      ∃ s₃, lts.Tr s₁ l₂ s₃ ∧ lts.Tr s₂ l₁ s₃) := inferInstance
+  haveI : Decidable (∀ s s₁ s₂ l, lts.Tr s l s₁ → lts.Tr s l s₂ → s₁ = s₂) := inferInstance
+  exact decidable_of_iff' _ Smurf_iff
+
 variable {Pid : Type*} [DecidableEq Pid]
 
 -- projection of an execution trace onto a process
