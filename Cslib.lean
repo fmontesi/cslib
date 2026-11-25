@@ -130,6 +130,7 @@ public import Cslib.Foundations.Combinatorics.InfiniteGraphRamsey
 public import Cslib.Foundations.Concurrency.Basic
 public import Cslib.Foundations.Concurrency.Linearisation
 public import Cslib.Foundations.Concurrency.RoundRobin.Basic
+public import Cslib.Foundations.Concurrency.RoundRobin.PidScheduler
 public import Cslib.Foundations.Concurrency.RoundRobin.Queue
 public import Cslib.Foundations.Concurrency.RoundRobin.Scheduler
 public import Cslib.Foundations.Concurrency.Smurf

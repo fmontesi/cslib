@@ -27,7 +27,8 @@ namespace Cslib.Concurrency
 variable {RState State Label : Type*} {B : Branching Label} {I : Label → Label → Prop}
   {Pid : Type*} [DecidableEq Pid]
 
--- lts is linear
+/-- At each state, every enabled conditional label has an enabled matching partner,
+and any two distinct enabled labels match. -/
 def IsLinear (lts : LTS State Label) :=
   -- if transitions, either a non-conditional or a matching pair
   (∀ s μ₁ s₁, lts.Tr s μ₁ s₁ → (¬ B.conditional μ₁ ∨ (∃ μ₂ s₂, lts.Tr s μ₂ s₂ ∧ B.matching μ₁ μ₂)))
@@ -53,8 +54,10 @@ theorem isLinear_unique_of_not_conditional {lts : LTS State Label} (hlin : IsLin
   by_contra hne
   exact hnc (B.matchcond μ ν (hlin.2 s μ ν s' t ⟨htr, htr', fun h => hne h.symm⟩)).1
 
--- `lts₁` is a linearisation of `lts₂` from states `s₁/s₂` through mapping `φ`
-def IsLinearisation [Independence I]
+/-- A linear LTS whose state map preserves the initial state, steps, and terminal states.
+On each nonempty cycle, every label enabled at the image of the starting state depends on
+at least one label of the cycle. -/
+def IsLinearisation
     (lts₁ : LTS RState Label) (lts₂ : LTS State Label) (s₁ : RState) (s₂ : State)
     (φ : RState → State) :=
   -- `lts₁` is linear
@@ -79,71 +82,22 @@ section Helpers
 variable [Independence I] {R : LTS RState Label} {A : LTS State Label}
   {φ : RState → State}
 
-/-- An enabled action either commutes with the whole target, or meets an equal or matching
-label after a prefix independent of it.
-Essentially a label-trace version of commute_or_matcheq in Smurf.lean. -/
-private lemma enabled_trace_cases (h : Smurf A I B) {s sa t : State} {a : Label}
-    -- `a` and `w` are both enabled at `s`
-    {w : List Label} (ha : A.Tr s a sa) (hw : A.MTr s w t) :
-    -- either `a` is independent of `w`, or `w` has an independent prefix with the next label
-    -- being either equal to or matching with `a`
-    (∀ b ∈ w, I a b) ∨ ∃ p b r, w = p ++ b :: r ∧
-      (∀ c ∈ p, I a c) ∧ (a = b ∨ B.matching a b) := by
-  classical
-  -- by induction on `w`
-  induction w generalizing s sa with
-  -- empty `w` is trivial
-  | nil => exact Or.inl (by simp)
-  -- otherwise deconstruct `w` into `b :: w`
-  | cons b w ih =>
-    obtain ⟨sb, hb, hw⟩ := LTS.MTr.cons_iff.mp hw
-    by_cases hab : I a b
-    -- if `a` is independent of `b`
-    · obtain ⟨sab, _, ha'⟩ := h.f s sa sb a b ⟨hab, ha, hb⟩
-      -- commute by diamond, then apply induction hypothesis to `a` and tail `w`
-      rcases ih ha' hw with hind | ⟨p, c, r, heq, hind, hlast⟩
-      -- if these are independent, then so are `a` and `b :: w`
-      · exact Or.inl (by simpa only [List.mem_cons, forall_eq_or_imp] using And.intro hab hind)
-      -- else, it provides a witness that also holds for `b :: w`
-      · refine Or.inr ⟨b :: p, c, r, ?_, ?_, hlast⟩
-        · simp only [heq, List.cons_append]
-        · simpa only [List.mem_cons, forall_eq_or_imp] using And.intro hab hind
-    -- if `a` and `b` are not independent, then they provide a witness immediately
-    · refine Or.inr ⟨[], b, w, rfl, by simp, ?_⟩
-      by_cases heq : a = b
-      · exact Or.inl heq
-      · exact Or.inr ((h.u s sa sb a b heq ⟨ha, hb⟩).resolve_left hab)
-
 /-- A matching partner also commutes with an executable prefix independent of the original
 branch, provided both branches are initially enabled. -/
 private lemma matching_prefix_independent (h : Smurf A I B)
     (hno : ∀ a b, B.matching a b → ¬ I a b)
     -- matching pair `a b`, `a` independent of a trace `p`
-    {a b : Label} (hm : B.matching a b) {p : List Label} {s sa sb t : State}
-    (ha : A.Tr s a sa) (hb : A.Tr s b sb) (hp : A.MTr s p t)
+    {a b : Label} (hm : B.matching a b) {p : List Label} {s sb t : State}
+    (hb : A.Tr s b sb) (hp : A.MTr s p t)
     -- then `b` is also independent of `p`
     (hind : ∀ c ∈ p, I a c) : ∀ c ∈ p, I b c := by
-  -- by induction on `p`
-  induction p generalizing s sa sb with
-  -- empty `p` is trivial
-  | nil => simp
-  -- otherwise deconstruct `p` into `c :: p`
-  | cons c p ih =>
-    obtain ⟨sc, hc, hp⟩ := LTS.MTr.cons_iff.mp hp
-    -- `c` must be independent of both `a` and `b`
-    have hac : I a c := hind c List.mem_cons_self
-    have hbc : I b c := by
-      have hne : b ≠ c := fun heq => hno a b hm (heq ▸ hac)
-      rcases h.u s sb sc b c hne ⟨hb, hc⟩ with hi | hm'
-      · exact hi
-      · have heq : a = c :=
-          B.functional b a c (Std.Symm.symm (r := B.matching) (a := a) (b := b) hm) hm'
-        exact False.elim (Std.Irrefl.irrefl (r := I) c (heq ▸ hac))
-    obtain ⟨sa', _, ha'⟩ := h.f s sa sc a c ⟨hac, ha, hc⟩
-    obtain ⟨sb', _, hb'⟩ := h.f s sb sc b c ⟨hbc, hb, hc⟩
-    -- the tail `p` is also independent of `b`, by the induction hypothesis
-    have htail := ih ha' hb' hp (fun x hx => hind x (List.mem_cons_of_mem c hx))
-    simpa only [List.mem_cons, forall_eq_or_imp] using And.intro hbc htail
+  rcases enabled_trace_cases h hb hp with hi | ⟨pre, c, tail, rfl, _, heq | hmatch⟩
+  · exact hi
+  · subst c
+    exact False.elim (hno a b hm (hind b (by simp)))
+  · have hac := B.functional b a c (Std.Symm.symm a b hm) hmatch
+    subst c
+    exact False.elim (Std.Irrefl.irrefl (r := I) a (hind a (by simp)))
 
 /-- Move an enabled occurrence to the front and retain an executable residual target. -/
 private lemma consume_enabled (h : Smurf A I B)
@@ -156,16 +110,7 @@ private lemma consume_enabled (h : Smurf A I B)
     -- then `a` commutes along `p` in `A`, while retaining the tail `r`
     List.PermUpTo I (p ++ a :: r) (a :: (p ++ r)) ∧
       p ++ r ∈ A.traces (φ q') := by
-  -- `a` and `p` commute
-  have hswap : List.PermUpTo I (p ++ [a]) ([a] ++ p) :=
-    permUpTo_append_comm p [a] fun b hb c hc => by
-      have : c = a := List.mem_singleton.mp hc
-      subst c
-      exact Std.Symm.symm (r := I) (a := a) (b := b) (hind b hb)
-  -- while retaining the tail `r`
-  have hperm : List.PermUpTo I (p ++ a :: r) (a :: (p ++ r)) := by
-    simpa only [List.append_assoc, List.cons_append, List.nil_append] using
-      List.PermUpTo.append_right r _ _ hswap
+  have hperm := permUpTo_move_front r (fun b hb => Std.Symm.symm a b (hind b hb))
   obtain ⟨sa, hsa, htail⟩ := LTS.MTr.cons_iff.mp (mtr_permUpTo h hperm hw)
   have heq := h.d (φ q) sa (φ q') a hsa (hmap q a q' ha)
   exact ⟨hperm, t, heq ▸ htail⟩
@@ -215,7 +160,7 @@ private lemma wait_or_consume (h : Smurf A I B)
       subst b'
       obtain ⟨sp, hp, _⟩ := LTS.MTr.split ht
       have hind' := matching_prefix_independent h hno hm
-        (hmap q a qa ha) (hmap q b qb hb) hp hind
+        (hmap q b qb hb) hp hind
       obtain ⟨hperm, htail⟩ := consume_enabled h hmap hb ht hind'
       exact Or.inr ⟨b, qb, p ++ r, hb, hperm, htail⟩
 

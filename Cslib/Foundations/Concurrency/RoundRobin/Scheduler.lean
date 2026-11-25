@@ -99,15 +99,6 @@ theorem scheduler_tr_of_select {A : LTS State Label} {alphabet : List Label}
   refine ⟨t, p, r, a, hval, hsel, ?_, htr, hμ⟩
   rw [hq']
 
-/-- The queue of a target of a scheduler transition is the rotation of the selected
-decomposition. -/
-private theorem scheduler_tr_queue_val {s₀ s : State} {alphabet : List Label}
-    {q q' : Queue alphabet} {a : Label} {p r : List Label} {hval : q.val = p ++ a :: r}
-    (hq' : (s, q') = (s₀, Queue.rotateQueue q p r a hval)) :
-    q'.val = Queue.rotate p r a := by
-  simp only [Prod.mk.injEq] at hq'
-  rw [hq'.2, Queue.rotateQueue_val]
-
 /-- Any two transitions out of the same scheduler state select the same label: the first-enabled
 decomposition of a queue is unique. -/
 private theorem scheduler_tr_same_selected {A : LTS State Label} {alphabet : List Label}
@@ -133,10 +124,7 @@ theorem select?_isSome_of_nonterminal {A : LTS State Label} {alphabet : List Lab
   obtain ⟨μ, t, htr⟩ := h
   have hmem : μ ∈ q.val := (Queue.perm q).mem_iff.mpr (hΛ s μ t htr)
   have hen : enabledAt A s μ = true := (enabledAt_true_iff A s μ).mpr ⟨t, htr⟩
-  have hisSome := (Queue.select?_isSome_iff (enabledAt A s) q.val).mpr ⟨μ, hmem, hen⟩
-  obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp hisSome
-  obtain ⟨p, a, r⟩ := x
-  exact ⟨p, a, r, hx⟩
+  exact Queue.select?_eq_some_of_mem _ hmem hen
 
 /-- Every nonterminal state of the scheduler has an outgoing transition. -/
 theorem scheduler_exists_tr_of_not_terminal {A : LTS State Label} {alphabet : List Label}
@@ -229,17 +217,10 @@ theorem scheduler_rank_decrease {A : LTS State Label} {alphabet : List Label}
     (htr : (scheduler (B := B) A alphabet).Tr (s, q) μ (t, q')) (hI : I lam μ) :
     (∃ t', A.Tr t lam t') ∧ Queue.rank lam q'.val < Queue.rank lam q.val := by
   obtain ⟨t₀, p, r, a, hval, hsel, hq', htrA, hμ⟩ := htr
-  obtain ⟨-, hena, hdis⟩ := Queue.select?_eq_some_spec _ hsel
   -- the measured label occurs in the queue and is enabled
   obtain ⟨s', htrlam⟩ := hen
   have hmem : lam ∈ q.val := (Queue.perm q).mem_iff.mpr (hΛ s lam s' htrlam)
   have henlam : enabledAt A s lam = true := (enabledAt_true_iff A s lam).mpr ⟨s', htrlam⟩
-  -- it cannot be in the disabled prefix
-  have hnotin : lam ∉ p := by
-    intro hcon
-    have hdis' : enabledAt A s lam = false := hdis lam hcon
-    rw [hdis'] at henlam
-    exact absurd henlam (by simp)
   -- and it differs from the selected label, on both branches
   have hne : a ≠ lam := by
     intro hcon
@@ -248,15 +229,11 @@ theorem scheduler_rank_decrease {A : LTS State Label} {alphabet : List Label}
       exact Std.Irrefl.irrefl lam hI
     · exact hno lam μ (hcon ▸ hμ_match) hI
   -- so it lies in the suffix, where its rank strictly decreases
-  have hin : lam ∈ r := Queue.select?_mem_post _ hsel hmem hnotin (fun h => hne h.symm)
-  have ht₀ : t = t₀ := by
-    simp only [Prod.mk.injEq] at hq'
-    exact hq'.1
-  obtain ⟨s₃, -, htrlam'⟩ := hsmurf.f s s' t₀ lam μ ⟨hI, htrlam, htrA⟩
-  refine ⟨⟨s₃, ht₀ ▸ htrlam'⟩, ?_⟩
-  have hqval : q'.val = Queue.rotate p r a := scheduler_tr_queue_val hq'
-  rw [hqval, hval]
-  exact Queue.rank_rotate_lt hne hnotin hin
+  obtain ⟨rfl, hq⟩ := Prod.mk.inj hq'
+  obtain ⟨s₃, -, htrlam'⟩ := hsmurf.f s s' _ lam μ ⟨hI, htrlam, htrA⟩
+  refine ⟨⟨s₃, htrlam'⟩, ?_⟩
+  rw [hq, Queue.rotateQueue_val]
+  exact Queue.rank_lt_of_select hsel hmem henlam hne
 
 /-! ### Multistep bound and the cycle condition -/
 

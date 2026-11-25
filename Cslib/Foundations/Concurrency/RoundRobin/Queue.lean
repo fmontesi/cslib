@@ -197,63 +197,26 @@ theorem select?_eq_none_iff (enabled : Label → Bool) :
     ∀ q, select? enabled q = none ↔ ∀ b ∈ q, enabled b = false := by
   intro q
   induction q with
-  | nil =>
-    refine ⟨fun _ b hb => absurd hb (List.not_mem_nil), fun _ => select?_nil enabled⟩
+  | nil => simp [select?]
   | cons x xs ih =>
     cases hx : enabled x with
-    | true =>
-      rw [select?_cons_of_enabled enabled xs hx]
-      refine ⟨fun h => ?_, fun h => ?_⟩
-      · cases h
-      · have h' := h x List.mem_cons_self
-        rw [hx] at h'
-        cases h'
+    | true => simp [select?, hx]
     | false =>
-      cases hs : select? enabled xs with
-      | none =>
-        rw [select?_cons_of_disabled_none enabled xs hx hs]
-        refine ⟨fun _ b hb => ?_, fun _ => rfl⟩
-        rw [List.mem_cons] at hb
-        rcases hb with rfl | hb
-        · exact hx
-        · exact ih.mp hs b hb
-      | some t =>
-        obtain ⟨p', b, r'⟩ := t
-        rw [select?_cons_of_disabled_some enabled (a := x) (p := p') (b := b) (r' := r') hx hs]
-        refine ⟨fun h => ?_, fun h => ?_⟩
-        · cases h
-        · have h' : ∀ c ∈ xs, enabled c = false := fun c hc => h c (List.mem_cons_of_mem x hc)
-          rw [ih.mpr h'] at hs
-          cases hs
+      cases hs : select? enabled xs <;> simp [select?, hx, ← ih, hs]
 
 /-- Selection succeeds exactly when some label of the queue is enabled. -/
 theorem select?_isSome_iff (enabled : Label → Bool) (q : List Label) :
     (select? enabled q).isSome = true ↔ ∃ b ∈ q, enabled b = true := by
   rw [Option.isSome_iff_ne_none, Ne, select?_eq_none_iff]
-  constructor
-  · intro h
-    by_contra hc
-    apply h
-    intro b hb
-    cases hb' : enabled b with
-    | false => rfl
-    | true => exact absurd ⟨b, hb, hb'⟩ hc
-  · rintro ⟨b, hb, hb'⟩ hc
-    have := hc b hb
-    rw [hb'] at this
-    cases this
+  simp
 
 /-- A queue with an enabled member admits a selection. -/
 theorem select?_eq_some_of_mem (enabled : Label → Bool) :
     ∀ {q a}, a ∈ q → enabled a = true → ∃ p b r, select? enabled q = some (p, b, r) := by
   intro q a hq ha
-  have hsome : (select? enabled q).isSome = true := (select?_isSome_iff enabled q).mpr ⟨a, hq, ha⟩
-  rw [Option.isSome_iff_ne_none] at hsome
-  cases h : select? enabled q with
-  | none => exact absurd h hsome
-  | some s =>
-    obtain ⟨p, b, r⟩ := s
-    exact ⟨p, b, r, rfl⟩
+  obtain ⟨⟨p, b, r⟩, hs⟩ := Option.isSome_iff_exists.mp
+    ((select?_isSome_iff enabled q).mpr ⟨a, hq, ha⟩)
+  exact ⟨p, b, r, hs⟩
 
 /-- The selection is deterministic: the decomposition it returns is unique. -/
 theorem select?_unique (enabled : Label → Bool) :
@@ -270,14 +233,8 @@ theorem select?_mem_post (enabled : Label → Bool) :
     ∀ {q p a r lam}, select? enabled q = some (p, a, r) →
       lam ∈ q → lam ∉ p → lam ≠ a → lam ∈ r := by
   intro q p a r lam hsel hmem hnotin hne
-  obtain ⟨hq, -, -⟩ := select?_eq_some_spec enabled hsel
-  rw [hq, List.mem_append] at hmem
-  rcases hmem with hmem | hmem
-  · exact absurd hmem hnotin
-  · rw [List.mem_cons] at hmem
-    rcases hmem with rfl | hmem
-    · exact absurd rfl hne
-    · exact hmem
+  simpa only [(select?_eq_some_spec enabled hsel).1, List.mem_append, List.mem_cons,
+    or_iff_right hnotin, or_iff_right hne] using hmem
 
 /-- A queue that starts with a disabled prefix followed by an enabled label selects exactly that
 decomposition. -/
@@ -345,6 +302,16 @@ theorem rank_rotate_lt {lam a : Label} {p r : List Label}
     List.idxOf_append_of_notMem (l₁ := p) (l₂ := a :: r) hnotin,
     List.idxOf_cons_ne (a := lam) (b := a) r hne]
   omega
+
+/-- Rotating past the first enabled entry decreases the rank of every other enabled member. -/
+theorem rank_lt_of_select {enabled : Label → Bool} {q pre post : List Label} {a b : Label}
+    (sel : select? enabled q = some (pre, a, post)) (hb : b ∈ q) (hen : enabled b = true)
+    (hne : a ≠ b) : rank b (rotate pre post a) < rank b q := by
+  obtain ⟨decomp, _, skipped⟩ := select?_eq_some_spec _ sel
+  have hn : b ∉ pre := fun h => Bool.noConfusion (hen.symm.trans (skipped b h))
+  have hin := select?_mem_post _ sel hb hn hne.symm
+  rw [decomp]
+  exact rank_rotate_lt hne hn hin
 
 /-- Permuting a queue does not change the rank of a label that the queue does not contain: in
 both lists such a label has rank equal to the length.  (Rank is a position, so it is *not*

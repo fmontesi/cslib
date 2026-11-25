@@ -7,6 +7,7 @@ Authors: Luc Edixhoven
 module
 
 public import Cslib.Foundations.Concurrency.Linearisation
+public import Cslib.Foundations.Concurrency.RoundRobin.PidScheduler
 public import Cslib.Foundations.Concurrency.RoundRobin.Scheduler
 public import Mathlib.Data.Fintype.Card
 public import Mathlib.Data.Set.Finite.Basic
@@ -110,9 +111,8 @@ theorem exists_finite_representative {B : Branching Label} {I : Label → Label 
     linearisation_is_representative (hpn₀ := hpn₀) (hpn₁ := hpn₁) (hpn₂ := hpn₂)
       R A hsmurf r₀ s₀ φ hlin⟩
 
-/-- **Theorem 19, participation form.** The matching-dependence hypothesis is derived from the
-participation assumptions already used by theorem 18, so no additional assumption is needed
-beyond finite states, finite branching, and `Smurf`. -/
+/-- **Theorem 19, participation form.** Round-robin scheduling of the active processes
+gives a finite representative. The ambient process type can be infinite. -/
 theorem exists_finite_representative_of_participation {B : Branching Label}
     {I : Label → Label → Prop} [Independence I] {A : LTS State Label} [Finite State]
     [A.FinitelyBranching] (hsmurf : Smurf A I B) {Pid : Type w}
@@ -123,7 +123,25 @@ theorem exists_finite_representative_of_participation {B : Branching Label}
     (s₀ : State) :
     ∃ (RState : Type (max u v)) (_ : Finite RState) (R : LTS RState Label) (r₀ : RState),
       IsRepresentative I (R.traces r₀) (A.traces s₀) :=
-  exists_finite_representative hsmurf (matching_not_independent hpn₀ hpn₁ hpn₂)
-    hpn₀ hpn₁ hpn₂ s₀
+  by
+    classical
+    let active := ((finiteAlphabet A).biUnion pn).toList
+    -- Number active names so the witness stays in the original state/label universe.
+    let Slot := ULift.{v} (Fin active.length)
+    let ids : List Slot := Finset.univ.toList
+    let uses (i : Slot) (a : Label) := active.get i.down ∈ pn a
+    have cover : ∀ {s a t}, A.Tr s a t → ∃ i ∈ ids, uses i a := by
+      intro s a t ha
+      obtain ⟨p, hp⟩ := hpn₀ a
+      have hmem : p ∈ active := Finset.mem_toList.mpr
+        (Finset.mem_biUnion.mpr ⟨a, mem_finiteAlphabet A ha, hp⟩)
+      obtain ⟨i, hi⟩ := List.mem_iff_get.mp hmem
+      exact ⟨⟨i⟩, Finset.mem_toList.mpr (Finset.mem_univ _), by simpa only [uses, hi] using hp⟩
+    have hlin := pidScheduler_isLinearisation (uses := uses) (ids := ids) hsmurf cover
+      (fun hi hp => Finset.disjoint_left.mp (hpn₁ _ _ hi) hp)
+      (fun hm hp => by simpa only [uses, ← hpn₂ _ _ hm] using hp) s₀
+    exact ⟨State × Queue ids, inferInstance, pidScheduler A uses ids, (s₀, Queue.initial ids),
+      linearisation_is_representative (hpn₀ := hpn₀) (hpn₁ := hpn₁) (hpn₂ := hpn₂)
+        _ A hsmurf _ s₀ Prod.fst hlin⟩
 
 end Cslib.Concurrency.RoundRobin
